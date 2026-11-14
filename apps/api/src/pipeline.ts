@@ -9,11 +9,22 @@ import { scheduleLlmTriage } from "./ai/gemini.js";
 
 const CRITICAL = ["incident.", "people.", "patient.", "hazards.", "location."];
 const escalated = new Set<string>();
+/** Twilio CallSid per conversation, used to hand the live call to a dispatcher. */
+export const callSids = new Map<string, string>();
+
+// Unresolved dynamic variables arrive empty or as "{{...}}" on non-phone calls.
+const real = (v?: string) => (v && !v.includes("{{") && v.trim() ? v.trim() : undefined);
 
 export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply> {
-  const { call_id, ...patch } = update;
+  const { call_id, call_sid, caller_id, ...patch } = update;
   const inc = store.getOrCreate(call_id);
+  if (real(call_sid)) callSids.set(call_id, real(call_sid)!);
   const changed = mergeInto(inc, patch);
+  // Caller ID pre-fills the callback number; the agent still confirms it.
+  if (!inc.caller.phone && real(caller_id)) {
+    inc.caller.phone = real(caller_id)!;
+    changed.push("caller.phone");
+  }
 
   if (changed.some((c) => c === "location.address" || c === "location.landmark")) {
     // Do not block the agent on geocoding; re-score when it lands.

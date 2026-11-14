@@ -5,7 +5,7 @@ export type Dispatcher = { id: string; name: string; phone: string; status: "ava
 
 // MVP: simulated routing. In the demo every dispatcher shows "On call".
 export const dispatchers: Dispatcher[] = [
-  { id: "d1", name: "Dispatcher 1", phone: "", status: "on_call" },
+  { id: "d1", name: "Dispatcher 1", phone: process.env.DISPATCHER_PHONE ?? "", status: "on_call" },
   { id: "d2", name: "Dispatcher 2", phone: "", status: "on_call" },
   { id: "d3", name: "Dispatcher 3", phone: "", status: "on_call" },
 ];

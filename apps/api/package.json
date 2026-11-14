@@ -8,9 +8,11 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/index.ts",
     "build": "tsc -p .",
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "agent:setup": "tsx --env-file=../../.env agent/setup.ts"
   },
   "dependencies": {
+    "@elevenlabs/elevenlabs-js": "^2.78.0",
     "@hono/node-server": "^1.13.7",
     "@surge/shared": "workspace:*",
     "hono": "^4.6.16",

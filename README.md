@@ -31,6 +31,17 @@ curl -s localhost:8787/tools/update_incident \
   -d '{"call_id":"conv_test","incident":{"type":"medical"},"patient":{"breathing":false}}'
 ```
 
+## Voice agent (ElevenLabs)
+
+The agent is defined in code: [prompt](apps/api/agent/prompt.md), [tools and settings](apps/api/agent/config.ts).
+`pnpm agent:setup` creates or updates the tools and agent (and imports the Twilio number if `TWILIO_PHONE_NUMBER` is set).
+
+1. `npx -y @elevenlabs/cli@latest onboard init` once, to put `ELEVENLABS_API_KEY` in `.env`.
+2. Expose the API: `cloudflared tunnel --url http://localhost:8787` and set `PUBLIC_BASE_URL` in `.env` (or use the Vultr URL).
+3. `pnpm agent:setup` and put the printed `ELEVENLABS_AGENT_ID` in `.env`. Re-run after changing the prompt, tools or tunnel URL.
+
+Take-over redirects the live Twilio call (captured from `system__call_sid`) to `DISPATCHER_PHONE`.
+
 ## Safety
 
 - AI answers only when every dispatcher is busy, and says it is automated in its first sentence.
