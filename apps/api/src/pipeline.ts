@@ -3,9 +3,13 @@ import type { AgentUpdate, Incident, ToolReply } from "@surge/shared";
 import { rulesFloor, baseScore, finalPriority } from "./priority/rules.js";
 import { computeMissing, isTriageComplete, mayEndCall } from "./priority/missing.js";
 import { geocode } from "./geo/geocode.js";
+import { nearbyFor } from "./geo/places.js";
+import { computeGroups } from "./geo/group.js";
+import { haversineKm } from "./hazards/firms.js";
+import { describeChanges } from "./timeline.js";
 import { nasaContextFor } from "./hazards/firms.js";
 import { geminiEnabled, scheduleLlmTriage, triageAndWait } from "./ai/gemini.js";
-import { store, mergeInto, emit, nextSeq } from "./store/memory.js";
+import { store, mergeInto, emit, nextSeq, note } from "./store/memory.js";
 
 const CRITICAL = ["incident.", "people.", "patient.", "hazards.", "location."];
 const escalated = new Set<string>();
@@ -38,6 +42,8 @@ export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply>
   const inc = store.getOrCreate(call_id);
   if (real(call_sid)) callSids.set(call_id, real(call_sid)!);
   const changed = mergeInto(inc, patch);
+  if (inc.channel === "unknown") inc.channel = real(call_sid) ? "phone" : "unknown";
+  for (const line of describeChanges(inc, changed)) note(inc, "fact", line);
   // Caller ID pre-fills the callback number; the agent still confirms it.
   if (!inc.caller.phone && real(caller_id)) {
     inc.caller.phone = real(caller_id)!;
@@ -89,6 +95,12 @@ export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply>
 export function rescore(inc: Incident) {
   inc.triage.rules = rulesFloor(inc);
   const final = finalPriority(inc);
+  const before = inc.final_priority;
+  // Notes start once there is something to say (not every call starts at P4 in the timeline).
+  if (final.priority !== before && (inc.incident.type || final.priority < 4)) {
+    const why = final.reasons.find((r) => !inc.final_reasons.some((o) => o.text === r.text)) ?? final.reasons[0];
+    note(inc, "priority", `Priority P${before} → P${final.priority}${why ? `: ${why.text}` : ""}`);
+  }
   inc.final_priority = final.priority;
   inc.final_reasons = final.reasons;
   inc.score = baseScore(inc);
@@ -100,11 +112,44 @@ export function rescore(inc: Incident) {
 async function locate(inc: Incident) {
   const query = [inc.location.address, inc.location.landmark].filter(Boolean).join(", ");
   const geo = await geocode(query);
-  if (!geo) return;
-  inc.location.lat = geo.lat;
-  inc.location.lng = geo.lng;
+  if (!geo) {
+    if (inc.location.source !== "gps") note(inc, "location", `Could not find "${query}" on the map`);
+    store.save(inc, ["timeline"]);
+    return;
+  }
   inc.location.geocode_confidence = geo.confidence;
-  inc.nasa_context = await nasaContextFor(geo.lat, geo.lng);
+  const gps = inc.location.gps;
+  if (gps && inc.location.source === "gps") {
+    // The phone's GPS is more precise. Keep it unless the caller is reporting somewhere else.
+    const km = haversineKm(gps, geo);
+    if (km > 0.5) {
+      note(inc, "location", `Reported address is ${km.toFixed(1)} km from the caller's phone: pin moved to the address`);
+      inc.location.lat = geo.lat;
+      inc.location.lng = geo.lng;
+      inc.location.source = "spoken";
+    }
+  } else {
+    inc.location.lat = geo.lat;
+    inc.location.lng = geo.lng;
+    inc.location.source = "spoken";
+    note(inc, "location", `Located on the map (${geo.confidence} confidence)`);
+  }
+  await placed(inc, ["location.lat", "location.lng", "location.geocode_confidence"]);
+}
+
+/** After lat/lng changes: hazards, nearest stations, re-score, re-group. */
+export async function placed(inc: Incident, changed: string[]) {
+  if (inc.location.lat == null || inc.location.lng == null) return;
+  inc.nasa_context = await nasaContextFor(inc.location.lat, inc.location.lng);
+  inc.nearby = nearbyFor(inc.location.lat, inc.location.lng);
   rescore(inc);
-  store.save(inc, ["location.lat", "location.lng", "nasa_context"]);
+  store.save(inc, [...changed, "nasa_context", "nearby", "timeline"]);
+  regroup();
+}
+
+export function regroup() {
+  for (const i of computeGroups(store.open())) {
+    if (i.group) note(i, "system", `Likely the same incident as ${i.group.size - 1} other call${i.group.size > 2 ? "s" : ""}`);
+    store.save(i, ["group"]);
+  }
 }

@@ -1,7 +1,7 @@
 // Create or update the Surge ElevenLabs agent, its tools, and (optionally) the Twilio number.
 // Usage: pnpm agent:setup   (reads .env at the repo root; the SDK reads ELEVENLABS_API_KEY)
 import { ElevenLabsClient, type ElevenLabs } from "@elevenlabs/elevenlabs-js";
-import { agentBody, getStatusTool, updateIncidentTool } from "./config.js";
+import { agentBody, getStatusTool, sendLocationLinkTool, updateIncidentTool } from "./config.js";
 
 const env = (k: string, required = true) => {
   const v = process.env[k]?.trim() ?? "";
@@ -29,6 +29,8 @@ async function upsertTool(def: ElevenLabs.ToolRequestModel): Promise<string> {
 }
 
 const toolIds = [await upsertTool(updateIncidentTool(baseUrl, secret)), await upsertTool(getStatusTool(baseUrl, secret))];
+// Texting a location link needs a Twilio number that can send SMS.
+if (env("TWILIO_PHONE_NUMBER", false) && env("TWILIO_ACCOUNT_SID", false)) toolIds.push(await upsertTool(sendLocationLinkTool(baseUrl, secret)));
 const body = agentBody(toolIds, env("ELEVENLABS_VOICE_ID", false) || undefined);
 
 let agentId = env("ELEVENLABS_AGENT_ID", false);

@@ -51,6 +51,8 @@ export function baseScore(i: Incident): number {
   s += 2 * Math.min(i.people.involved ?? 0, 5);
   if (i.nasa_context?.nearest_fire_km != null && i.nasa_context.nearest_fire_km <= 5) s += 5;
   if (i.call_state.needs_instructions) s += 3;
+  // Caller's phone is about to die: reach them before the call drops.
+  if (i.device?.battery != null && i.device.battery <= 0.15 && !i.device.charging) s += 5;
   return s;
 }
 

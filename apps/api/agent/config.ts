@@ -120,6 +120,31 @@ export function getStatusTool(baseUrl: string, secret: string): ElevenLabs.ToolR
   };
 }
 
+export function sendLocationLinkTool(baseUrl: string, secret: string): ElevenLabs.ToolRequestModel {
+  return {
+    toolConfig: {
+      type: "webhook" as const,
+      name: "send_location_link",
+      description:
+        "Text the caller a link that shares their phone's exact GPS location and lets them send photos. Use when the caller cannot give an address, or is unsure where they are. Never on a covert call. If the reply has `say`, read it; if not, do not mention a text.",
+      responseTimeoutSecs: 8,
+      apiSchema: {
+        url: `${baseUrl}/tools/send_location_link`,
+        method: "POST" as const,
+        requestHeaders: { "x-surge-secret": secret },
+        requestBodySchema: {
+          type: "object" as const,
+          required: ["call_id"],
+          properties: {
+            call_id: { type: "string", dynamicVariable: "system__conversation_id" },
+            caller_id: { type: "string", dynamicVariable: "system__caller_id" },
+          },
+        },
+      },
+    },
+  };
+}
+
 // Post-call second extraction (docs/05: fills only fields still null).
 const dc = (type: "string" | "integer" | "boolean", description: string) => ({ type, description });
 export const DATA_COLLECTION = {
@@ -186,6 +211,8 @@ export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
     },
     platformSettings: {
       dataCollection: DATA_COLLECTION,
+      // The caller page starts silent text sessions and a text-mode greeting.
+      overrides: { conversationConfigOverride: { conversation: { textOnly: true }, agent: { firstMessage: true, language: true } } },
       guardrails: {
         version: "1",
         promptInjection: { isEnabled: true },

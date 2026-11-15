@@ -31,6 +31,11 @@ export const Location = z.object({
   lat: n(z.number()),
   lng: n(z.number()),
   geocode_confidence: GeocodeConfidence,
+  // Where lat/lng came from. "gps" = the caller's phone shared its location (caller page).
+  source: z.enum(["none", "spoken", "gps"]),
+  gps: n(z.object({ lat: z.number(), lng: z.number(), accuracy_m: z.number(), heading: n(z.number()), speed_mps: n(z.number()), at: z.string() })),
+  // Reverse-geocoded address of the GPS fix (dispatcher only).
+  gps_address: n(z.string()),
 });
 
 export const IncidentInfo = z.object({
@@ -103,6 +108,46 @@ export const Triage = z.object({
   classifier: n(z.object({ priority: Priority, p1_probability: z.number() })),
 });
 
+export const Channel = z.enum(["phone", "app_voice", "app_text", "unknown"]);
+
+export const Device = z.object({
+  battery: n(z.number().min(0).max(1)),
+  charging: n(z.boolean()),
+  language: n(z.string()),
+  platform: n(z.string()),
+  /** Caller page is open and connected right now. */
+  online: z.boolean(),
+  last_seen: n(z.string()),
+});
+
+export const Media = z.object({
+  id: z.string(),
+  kind: z.enum(["photo", "video"]),
+  url: z.string(),
+  at: z.string(),
+  /** AI description of the photo, for the dispatcher only. */
+  caption: n(z.string()),
+});
+
+export const TimelineEntry = z.object({
+  at: z.string(),
+  kind: z.enum(["fact", "priority", "location", "media", "system", "dispatcher"]),
+  text: z.string(),
+});
+
+export const Group = z.object({ id: z.string(), size: z.number().int(), call_ids: z.array(z.string()) });
+
+export const Nearby = z.object({
+  fire_station: n(z.object({ name: z.string(), km: z.number() })),
+  hospital: n(z.object({ name: z.string(), km: z.number() })),
+});
+
+export const Takeover = z.object({
+  mode: z.enum(["phone", "web"]),
+  state: z.enum(["connecting", "connected", "failed", "ended"]),
+  error: n(z.string()),
+});
+
 export const IncidentStatus = z.enum(["ai_on_call", "waiting", "taken", "dispatched", "closed"]);
 
 export const Incident = z.object({
@@ -125,10 +170,19 @@ export const Incident = z.object({
   score: z.number(),
   taken_by: n(z.string()),
   updated_at: z.string(),
+  channel: Channel,
+  device: n(Device),
+  media: z.array(Media),
+  timeline: z.array(TimelineEntry),
+  group: n(Group),
+  nearby: n(Nearby),
+  takeover: n(Takeover),
 });
 export type Incident = z.infer<typeof Incident>;
 export type Priority = z.infer<typeof Priority>;
 export type Reason = z.infer<typeof Reason>;
+export type TimelineEntry = z.infer<typeof TimelineEntry>;
+export type Media = z.infer<typeof Media>;
 
 // What the ElevenLabs agent may send to update_incident: partial, agent-writable fields only.
 export const AgentUpdate = z
@@ -175,7 +229,7 @@ export function emptyIncident(call_id: string, now = new Date()): Incident {
     caller: { phone: null, callback_confirmed: false, language: null, relation: "unknown", caller_safe: null },
     location: {
       spoken: null, address: null, unit_or_floor: null, landmark: null, read_back_confirmed: false,
-      lat: null, lng: null, geocode_confidence: "none",
+      lat: null, lng: null, geocode_confidence: "none", source: "none", gps: null, gps_address: null,
     },
     incident: { type: null, subtype: null, description: null, started: null },
     people: { involved: null, injured: null, trapped: null, vulnerable: [] },
@@ -195,5 +249,12 @@ export function emptyIncident(call_id: string, now = new Date()): Incident {
     score: 0,
     taken_by: null,
     updated_at: iso,
+    channel: "unknown",
+    device: null,
+    media: [],
+    timeline: [{ at: iso, kind: "system", text: "Call answered by Surge AI" }],
+    group: null,
+    nearby: null,
+    takeover: null,
   };
 }

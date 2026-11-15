@@ -3,7 +3,9 @@ import { Hono } from "hono";
 import { AgentUpdate } from "@surge/shared";
 import { config } from "../config.js";
 import { handleAgentUpdate } from "../pipeline.js";
-import { store } from "../store/memory.js";
+import { note, store } from "../store/memory.js";
+import { sendSms, smsEnabled } from "../telephony/twilio.js";
+import { issueTicket } from "../caller/tickets.js";
 
 export const tools = new Hono();
 
@@ -62,4 +64,20 @@ tools.post("/get_status", async (c) => {
       ? "A dispatcher can see your location and your call is marked highest priority."
       : "A dispatcher can see your call and will take it as soon as one is free.";
   return c.json({ text });
+});
+
+/** Agent tool: text the caller a link to share live GPS and photos (only on real phone calls). */
+tools.post("/send_location_link", async (c) => {
+  const { call_id, caller_id } = (await c.req.json().catch(() => ({}))) as { call_id?: string; caller_id?: string };
+  const inc = call_id ? store.getOrCreate(call_id) : undefined;
+  const to = inc?.caller.phone || (caller_id && !caller_id.includes("{{") ? caller_id : "");
+  if (!inc || !to || !smsEnabled() || inc.call_state.covert) {
+    return c.json({ sent: false, say: null, error: !smsEnabled() ? "Texting is not available. Do not mention a text." : "No number to text. Do not mention a text." });
+  }
+  const base = (process.env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+  const link = `${base}/c/${issueTicket(inc.call_id)}`;
+  const r = await sendSms(to, `911 (Surge): tap to share your exact location and photos with the dispatcher: ${link}`);
+  note(inc, "system", r.ok ? "Texted the caller a location link" : "Could not text the caller a location link");
+  store.save(inc, ["timeline"]);
+  return c.json(r.ok ? { sent: true, say: "I've sent you a text with a link. Tap it to share your exact location. Stay on the line." } : { sent: false, say: null, error: "The text could not be sent. Do not mention it again." });
 });

@@ -70,16 +70,20 @@ Rules:
 - If an important fact is unknown and the situation could be severe, prefer the more urgent priority.
 - The rules engine already gave a floor priority. You may agree or be more urgent; the system never lets you lower it.
 - Covert calls: if call_state.covert is true, priority 1 and include police. Also watch for a covert call the voice agent missed: the description reads like a call to someone else (ordering food, talking to a friend), the caller can only answer yes/no, says everything is fine while facts suggest danger, or another person seems to control the call. Then use priority 1 and add a contradiction starting with "Possible covert call:" saying why. Never suggest calling the caller back on a covert call.
+- scene_photos_described_by_ai: descriptions of photos the caller sent. Use them like caller facts (they can raise the priority) and say so in a reason with evidence_field "media".
 - units: which services to send (fire, ems, police).
 - summary: one plain sentence for the dispatcher. No advice to the caller.
 - confidence: how sure you are about the priority, 0 to 1.`;
 
 function promptFor(inc: Incident): string {
   const { caller, location, incident, people, patient, hazards, nasa_context, triage } = inc;
+  const photos = inc.media.map((m) => m.caption).filter(Boolean);
   return JSON.stringify(
     {
       incident: { caller: { language: caller.language, relation: caller.relation, caller_safe: caller.caller_safe }, location: { address: location.address, landmark: location.landmark, unit_or_floor: location.unit_or_floor }, incident, people, patient, hazards, call_state: { needs_instructions: inc.call_state.needs_instructions, covert: inc.call_state.covert, covert_cue: inc.call_state.covert_cue } },
       nasa_context,
+      ...(photos.length ? { scene_photos_described_by_ai: photos } : {}),
+      ...(inc.device?.battery != null ? { caller_phone_battery: Math.round(inc.device.battery * 100) + "%" } : {}),
       rules_floor: triage.rules ? { priority: triage.rules.priority, reasons: triage.rules.reasons.map((r) => r.text) } : null,
     },
     null,
@@ -208,4 +212,47 @@ export function triageAtCallEnd(callId: string) {
   clearTimeout(timers.get(callId));
   timers.delete(callId);
   void triageNow(callId);
+}
+
+/** Short English translation for the dispatcher. Returns null on failure (never blocks the call). */
+export async function translateToEnglish(text: string): Promise<string | null> {
+  if (!ai) return null;
+  try {
+    const res = await ai.models.generateContent({
+      model: MODEL,
+      contents: text,
+      config: {
+        systemInstruction: "Translate the caller's or agent's line from a 911 call into plain English. Reply with only the translation.",
+        temperature: 0,
+        abortSignal: AbortSignal.timeout(3000),
+      },
+    });
+    return res.text?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** One-line description of a scene photo for the dispatcher (what is visible that matters for triage). */
+export async function describePhoto(data: Buffer, mimeType: string): Promise<string | null> {
+  if (!ai) return null;
+  for (const model of [MODEL, FALLBACK_MODEL]) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: [{ role: "user", parts: [{ inlineData: { data: data.toString("base64"), mimeType } }, { text: "Describe this emergency scene photo." }] }],
+        config: {
+          systemInstruction:
+            "You help a 911 dispatcher. In one sentence of at most 25 words, say what is visible that matters for emergency response: fire, smoke, injuries, people, vehicles, weapons, water, damage. Only describe what you can see. No advice.",
+          temperature: 0,
+          abortSignal: AbortSignal.timeout(15000),
+          ...(model.startsWith("gemini-2") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
+      });
+      return res.text?.trim() || null;
+    } catch (err) {
+      console.warn(`photo description failed on ${model}:`, short(err));
+    }
+  }
+  return null;
 }

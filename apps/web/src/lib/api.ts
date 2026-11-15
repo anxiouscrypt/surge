@@ -1,5 +1,7 @@
+// Built and served by the API (pnpm demo): same origin. Dev: the API on :8787.
 export const API_URL = (
-  import.meta.env.VITE_API_URL ?? "http://localhost:8787"
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:8787" : location.origin)
 ).replace(/\/$/, "");
 export const WS_URL = API_URL.replace(/^http/, "ws") + "/ws";
 

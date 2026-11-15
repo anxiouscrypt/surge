@@ -23,6 +23,16 @@ const paths = {
   shield: "m12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Z",
   minus: "M5 12h14",
   plus: "M5 12h14M12 5v14",
+  camera: "M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Zm8 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z",
+  mic: "M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3ZM5 11a7 7 0 0 0 14 0M12 18v3",
+  message: "M4 5h16v11H9l-5 4V5Z",
+  send: "M3 11 21 3l-8 18-2-8-8-2Z",
+  battery: "M3 8h15v8H3V8Zm15 3h3v2h-3",
+  users: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 10a7 7 0 0 1 14 0M17 4a4 4 0 0 1 0 7m2 3a6 6 0 0 1 3 7",
+  headset: "M4 15v-3a8 8 0 0 1 16 0v3M4 15h3v5H4v-5Zm13 0h3v5h-3v-5Z",
+  hospital: "M4 21V5h16v16M9 21v-4h6v4M12 8v5m-2.5-2.5h5",
+  volume: "M4 9h4l5-4v14l-5-4H4V9Zm13 0a4 4 0 0 1 0 6",
+  mute: "M4 9h4l5-4v14l-5-4H4V9Zm13 1 5 5m0-5-5 5",
 } as const;
 export type IconName = keyof typeof paths;
 export function Icon({

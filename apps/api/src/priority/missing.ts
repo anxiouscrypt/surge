@@ -5,8 +5,10 @@ export function computeMissing(i: Incident): string[] {
   const m: string[] = [];
   // Covert call: no callback (a ringing phone can endanger the caller) and do not ask if they are safe; they are not.
   const covert = i.call_state.covert;
-  if (!i.location.address && !i.location.landmark) m.push("location");
-  else if (!i.location.read_back_confirmed) m.push("location.read_back_confirmed");
+  // A precise GPS fix from the caller's phone counts as a location: no need to ask.
+  const gps = i.location.source === "gps" && (i.location.gps?.accuracy_m ?? Infinity) <= 100;
+  if (!gps && !i.location.address && !i.location.landmark) m.push("location");
+  else if (!gps && !i.location.read_back_confirmed) m.push("location.read_back_confirmed");
   // No caller ID (e.g. a web test call): ask for a number. Caller ID known: confirm it.
   if (!covert && !i.caller.phone) m.push("caller.phone");
   else if (!covert && !i.caller.callback_confirmed) m.push("caller.callback");
