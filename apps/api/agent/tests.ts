@@ -57,7 +57,7 @@ const cases: Case[] = [
   {
     name: "spanish caller gets spanish",
     scenario:
-      "Eres una persona que llama al 911 y solo habla español. Hay humo saliendo del segundo piso de la casa en 302 Ballard St, Ypsilanti y tu vecina anciana sigue adentro. Responde en español, con frases cortas.",
+      "Eres una persona que llama al 911 y solo habla español. Hay humo saliendo del segundo piso de la casa en 302 Ballard St, Ypsilanti y tu vecina anciana sigue adentro. Responde en español, con frases cortas. Si el agente te dice que no cuelgues y luego se queda callado, termina la llamada.",
     conditions: [
       "After the caller speaks Spanish, the agent answers in Spanish.",
       "The agent asks for or confirms the address.",
