@@ -21,7 +21,7 @@ import { publicUrl } from "./publicUrl.js";
 import { startConversationSync } from "./conversations.js";
 import { smsEnabled } from "./telephony/twilio.js";
 import { startReplay } from "./demo/replay.js";
-import { dispatcherAllowed, viaTunnel } from "./auth.js";
+import { dispatcherAllowed, originAllowed, viaTunnel } from "./auth.js";
 import { refreshFires } from "./hazards/firms.js";
 import { geminiEnabled } from "./ai/gemini.js";
 
@@ -30,7 +30,14 @@ if (restored) console.log(`restored ${restored} calls from the last run`);
 
 const app = new Hono();
 app.use("*", logger());
-app.use("*", cors());
+app.use("*", cors({ origin: (origin) => (originAllowed(origin, publicUrl()) ? origin : null) }));
+app.use("*", async (c, next) => {
+  // Browsers send Origin on cross-site requests; refuse other websites outright (not just their reads).
+  // Agent tools and webhooks are server-to-server and carry their own secret.
+  const serverToServer = c.req.path.startsWith("/tools/") || c.req.path.startsWith("/webhooks/");
+  if (!serverToServer && !originAllowed(c.req.header("origin"), publicUrl())) return c.json({ error: "origin not allowed" }, 403);
+  await next();
+});
 // Photos up to 15 MB; everything else is small JSON.
 app.use("*", async (c, next) => {
   const max = /\/caller\/[^/]+\/media$/.test(c.req.path) ? 15 * 1024 * 1024 : 256 * 1024;

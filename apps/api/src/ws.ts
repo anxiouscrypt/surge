@@ -3,7 +3,8 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { ServerEvent } from "@surge/shared";
 import { bus, emit, nextSeq, note, store } from "./store/memory.js";
 import { callForTicket } from "./caller/tickets.js";
-import { dispatcherAllowed, toHeaders } from "./auth.js";
+import { dispatcherAllowed, originAllowed, toHeaders } from "./auth.js";
+import { publicUrl } from "./publicUrl.js";
 
 /** Open caller pages, by call id. Used for live takeover (WebRTC signaling) and "caller online". */
 const callerSockets = new Map<string, Set<WebSocket>>();
@@ -35,6 +36,11 @@ export function attachWebSocket(server: Server) {
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url ?? "/", "http://x");
+    if (!originAllowed(req.headers.origin, publicUrl())) {
+      socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+      socket.destroy();
+      return;
+    }
     if (url.pathname === "/ws" && !dispatcherAllowed(toHeaders(req.headers), url)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();

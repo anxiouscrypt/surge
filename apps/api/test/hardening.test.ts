@@ -62,3 +62,19 @@ describe("post-call backfill", () => {
     expect(i.caller.phone).toBeNull();
   });
 });
+
+import { originAllowed } from "../src/auth.js";
+describe("origin check", () => {
+  const pub = "https://abc-def.trycloudflare.com";
+  it("allows the dashboard, dev server, public link and non-browser clients", () => {
+    expect(originAllowed(undefined, pub)).toBe(true);
+    expect(originAllowed("http://localhost:5173", pub)).toBe(true);
+    expect(originAllowed("http://127.0.0.1:8787", pub)).toBe(true);
+    expect(originAllowed(pub, pub)).toBe(true);
+  });
+  it("refuses other websites", () => {
+    expect(originAllowed("https://evil.example", pub)).toBe(false);
+    expect(originAllowed("https://abc-def.trycloudflare.com.evil.example", pub)).toBe(false);
+    expect(originAllowed("null", pub)).toBe(false);
+  });
+});
