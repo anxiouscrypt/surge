@@ -39,7 +39,7 @@ export function QueueCard({
               AI on call
             </>
           ) : inc.call_state.stage === "ended" ? (
-            "Call ended"
+            inc.call_state.callback_promised ? "Call back" : "Call ended"
           ) : inc.status === "taken" ? (
             inc.call_state.stage === "transferred" ? (
               "Transferred"
@@ -69,6 +69,14 @@ export function QueueCard({
         <span className="covert-chip">
           <Icon name="shield" size={12} />
           Caller can't talk · do not call back
+        </span>
+      )}
+      {inc.call_state.callback_promised && (
+        <span className="callback-chip">
+          <Icon name="phone" size={12} />
+          {inc.call_state.stage === "ended"
+            ? "AI closed report · callback promised"
+            : "Non-urgent · AI will close and promise callback"}
         </span>
       )}
       <span className="card-description">

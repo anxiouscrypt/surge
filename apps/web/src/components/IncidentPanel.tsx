@@ -444,7 +444,9 @@ export function IncidentPanel({
           <div className="action-message">
             {inc.call_state.covert
               ? "Call ended. Do not call back: send units to the last known location."
-              : "Call ended. Use the callback number to reach the caller."}
+              : inc.call_state.callback_promised
+                ? "Non-urgent report. The AI collected the details, ended the call and told the caller someone will call back."
+                : "Call ended. Use the callback number to reach the caller."}
           </div>
         )}
         {!demo &&

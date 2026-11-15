@@ -70,6 +70,10 @@ export const CallState = z.object({
   // Caller cannot speak freely (hostage, kidnapping, abuser in the room, coded call). Forces P1, no callback.
   covert: z.boolean(),
   covert_cue: n(z.string()),
+  // Non-urgent report: the AI may close the call and promise a callback (backend-decided).
+  callback_promised: z.boolean(),
+  // Agent says it closed the call itself (sent right before end_call).
+  ai_ended_call: z.boolean(),
 });
 
 export const NasaContext = z.object({
@@ -141,7 +145,7 @@ export const AgentUpdate = z
     people: People.partial().optional(),
     patient: Patient.partial().optional(),
     hazards: Hazards.partial().optional(),
-    call_state: CallState.pick({ caller_requested_human: true, needs_instructions: true, covert: true, covert_cue: true }).partial().optional(),
+    call_state: CallState.pick({ caller_requested_human: true, needs_instructions: true, covert: true, covert_cue: true, ai_ended_call: true }).partial().optional(),
   })
   .strict();
 export type AgentUpdate = z.infer<typeof AgentUpdate>;
@@ -153,6 +157,10 @@ export const ToolReply = z.object({
   escalate: z.boolean(),
   /** Fields that were not stored, and why. The agent must fix and resend them. */
   not_saved: z.array(z.string()).optional(),
+  /** Non-urgent report with everything collected: ask "anything else?", say `say`, then end the call. */
+  wrap_up: z.boolean().optional(),
+  /** Reply to ai_ended_call: true means the backend approved closing; say `say`, then end_call. */
+  ended: z.boolean().optional(),
   error: z.string().optional(),
 });
 export type ToolReply = z.infer<typeof ToolReply>;
@@ -178,7 +186,7 @@ export function emptyIncident(call_id: string, now = new Date()): Incident {
     },
     call_state: {
       stage: "collecting", missing: [], caller_requested_human: false, needs_instructions: false,
-      covert: false, covert_cue: null,
+      covert: false, covert_cue: null, callback_promised: false, ai_ended_call: false,
     },
     nasa_context: null,
     triage: { rules: null, llm: null, classifier: null },

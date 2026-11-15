@@ -181,6 +181,14 @@ async function triageNow(callId: string) {
   store.save(current, ["triage.llm", "final_priority"]);
 }
 
+/** Run now and wait (bounded by the Gemini timeout). Used before letting a caller go. */
+export async function triageAndWait(callId: string) {
+  if (!ai) return;
+  clearTimeout(timers.get(callId));
+  timers.delete(callId);
+  await triageNow(callId);
+}
+
 /** Debounced: whenever a critical field changes. */
 export function scheduleLlmTriage(inc: Incident) {
   if (!ai) return;

@@ -1,11 +1,11 @@
 // One update through the pipeline (docs/05 section 1).
 import type { AgentUpdate, Incident, ToolReply } from "@surge/shared";
-import { store, mergeInto } from "./store/memory.js";
 import { rulesFloor, baseScore, finalPriority } from "./priority/rules.js";
-import { computeMissing, isTriageComplete } from "./priority/missing.js";
+import { computeMissing, isTriageComplete, mayEndCall } from "./priority/missing.js";
 import { geocode } from "./geo/geocode.js";
 import { nasaContextFor } from "./hazards/firms.js";
-import { scheduleLlmTriage } from "./ai/gemini.js";
+import { geminiEnabled, scheduleLlmTriage, triageAndWait } from "./ai/gemini.js";
+import { store, mergeInto, emit, nextSeq } from "./store/memory.js";
 
 const CRITICAL = ["incident.", "people.", "patient.", "hazards.", "location."];
 const escalated = new Set<string>();
@@ -20,6 +20,9 @@ const real = (v?: string | null) => (v && !v.includes("{{") && v.trim() ? v.trim
 const PLACEHOLDER =
   /\b(you|your|would|delivery|the order|unknown|not sure|don'?t know|at home|my home|my house|the house|here|the address|this address|my address|my location|the location|same place)\b/i;
 export const isPlaceholderAddress = (s: string) => !/[a-z]/i.test(s) || (PLACEHOLDER.test(s) && !/\d/.test(s));
+
+export const CLOSING =
+  "Thank you. I've passed everything to a dispatcher, and someone will call you back at this number. If anything changes or gets worse, call 911 again.";
 
 export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply> {
   const { call_id, call_sid, caller_id, ...patch } = update;
@@ -47,13 +50,34 @@ export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply>
   }
 
   rescore(inc);
+  let closed = false;
+  if (inc.call_state.ai_ended_call && inc.call_state.stage !== "ended") {
+    // Before letting the caller go, make sure Gemini has seen the latest facts; it may raise the priority.
+    if (inc.call_state.callback_promised && geminiEnabled()) {
+      store.save(inc, changed);
+      await triageAndWait(call_id);
+    }
+    if (inc.call_state.callback_promised) {
+      // Final go-ahead: the AI closes a non-urgent report; it now waits in the queue for a callback.
+      inc.call_state.stage = "ended";
+      inc.status = "waiting";
+      changed.push("call_state.stage", "status");
+      closed = true;
+    } else {
+      inc.call_state.ai_ended_call = false; // no longer allowed (it became urgent): stay on the line
+    }
+  }
   store.save(inc, changed);
   if (changed.some((c) => CRITICAL.some((p) => c.startsWith(p)))) scheduleLlmTriage(inc);
+  if (closed) emit({ type: "call.ended", call_id, seq: nextSeq() });
 
   let escalate = inc.triage.rules?.escalate === true && !escalated.has(call_id);
   if (escalate) escalated.add(call_id);
   // Never make the agent announce "highest priority" out loud when someone may be listening.
   if (inc.call_state.covert) escalate = false;
+  if (closed) return { ok: true, missing: [], say: CLOSING, escalate: false, ended: true };
+  if (inc.call_state.callback_promised && inc.call_state.stage !== "ended")
+    return { ok: true, missing: [], say: CLOSING, escalate: false, wrap_up: true };
   if (notSaved.length)
     return {
       ok: true, missing: inc.call_state.missing, say: null, escalate, not_saved: notSaved,
@@ -69,6 +93,7 @@ export function rescore(inc: Incident) {
   inc.final_reasons = final.reasons;
   inc.score = baseScore(inc);
   inc.call_state.missing = computeMissing(inc);
+  if (inc.call_state.stage !== "ended") inc.call_state.callback_promised = mayEndCall(inc);
   if (inc.call_state.stage === "collecting" && isTriageComplete(inc.call_state.missing)) inc.call_state.stage = "triage_complete";
 }
 

@@ -2270,3 +2270,19 @@ kbd {
 @media(max-width:760px){ .event-selection { max-height:270px; } }
 .refresh-nasa { width:100%;text-align:left;background:none;color:#abcabd;font-size:9px;padding:10px 0;border-top:1px solid var(--line); }
 .refresh-nasa:hover { color:#deefe7; }
+
+/* Non-urgent report closed by the AI with a callback promise */
+.callback-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  background: #b6e3d212;
+  border: 1px solid #b6e3d240;
+  border-radius: 4px;
+  align-self: flex-start;
+}

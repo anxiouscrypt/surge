@@ -31,6 +31,23 @@ export function computeMissing(i: Incident): string[] {
   return m;
 }
 
+/**
+ * May the AI close this call and promise a callback? Only for non-urgent reports with everything collected
+ * and a confirmed callback number. Never for P1/P2 (stay on the line until a dispatcher takes over),
+ * never for covert calls (a callback can ring in front of the attacker).
+ */
+export function mayEndCall(i: Incident): boolean {
+  return (
+    i.call_state.missing.length === 0 &&
+    i.final_priority >= 3 &&
+    !i.call_state.covert &&
+    !i.call_state.needs_instructions &&
+    i.caller.caller_safe !== false &&
+    !!i.caller.phone &&
+    i.caller.callback_confirmed
+  );
+}
+
 /** Triage complete when location, type, the P1 checks and caller safety are known. */
 export function isTriageComplete(missing: string[]): boolean {
   return !missing.some((f) => f !== "people.involved" && f !== "caller.callback");

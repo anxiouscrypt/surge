@@ -176,3 +176,51 @@ describe("address guard", async () => {
     expect(baseScore(covert)).toBeGreaterThan(baseScore(other));
   });
 });
+
+describe("closing non-urgent reports", async () => {
+  const { handleAgentUpdate } = await import("../src/pipeline");
+  const report = (call_id: string, extra: Record<string, any> = {}) =>
+    handleAgentUpdate({
+      call_id,
+      caller: { phone: "+17345550100", callback_confirmed: true, caller_safe: true },
+      location: { address: "Washtenaw Ave and Hewitt Rd, Ypsilanti", read_back_confirmed: true },
+      incident: { type: "traffic", description: "Two cars bumped, nobody hurt" },
+      people: { involved: 2, injured: 0, trapped: false },
+      ...extra,
+    });
+
+  it("non-urgent report with everything collected gets wrap_up and a callback line", async () => {
+    const reply = await report("close_1");
+    expect(reply.wrap_up).toBe(true);
+    expect(reply.say).toMatch(/call you back/);
+  });
+
+  it("final go-ahead ends the call and leaves it waiting for a callback", async () => {
+    await report("close_2");
+    const reply = await handleAgentUpdate({ call_id: "close_2", call_state: { ai_ended_call: true } });
+    expect(reply.ended).toBe(true);
+    const { store } = await import("../src/store/memory");
+    const inc = store.get("close_2")!;
+    expect(inc.call_state.stage).toBe("ended");
+    expect(inc.status).toBe("waiting");
+  });
+
+  it("never wraps up an urgent call", async () => {
+    const reply = await report("close_3", { hazards: { weapon: true } });
+    expect(reply.wrap_up).toBeUndefined();
+  });
+
+  it("refuses the go-ahead if the call became urgent", async () => {
+    await report("close_4");
+    await handleAgentUpdate({ call_id: "close_4", patient: { breathing: false } });
+    const reply = await handleAgentUpdate({ call_id: "close_4", call_state: { ai_ended_call: true } });
+    expect(reply.ended).toBeUndefined();
+    const { store } = await import("../src/store/memory");
+    expect(store.get("close_4")!.call_state.stage).not.toBe("ended");
+  });
+
+  it("never wraps up a covert call", async () => {
+    const reply = await report("close_5", { call_state: { covert: true } });
+    expect(reply.wrap_up).toBeUndefined();
+  });
+});

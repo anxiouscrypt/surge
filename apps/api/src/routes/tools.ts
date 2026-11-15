@@ -56,7 +56,9 @@ tools.post("/get_status", async (c) => {
     ? "Okay. Stay on the line with me."
     : !inc
     ? "A dispatcher has been alerted and will take your call as soon as one is free."
-    : inc.final_priority === 1
+    : inc.call_state.callback_promised
+      ? "A dispatcher has your report and someone will call you back at this number."
+      : inc.final_priority === 1
       ? "A dispatcher can see your location and your call is marked highest priority."
       : "A dispatcher can see your call and will take it as soon as one is free.";
   return c.json({ text });

@@ -89,6 +89,7 @@ export function updateIncidentTool(baseUrl: string, secret: string): ElevenLabs.
               caller_requested_human: bool("Caller asked for a person"),
               needs_instructions: bool("Caller asked what to do (you must not give instructions)"),
               covert: bool("Caller cannot speak freely: whispering, says they can't talk, someone is with them, answers only yes/no, speaks in code (e.g. ordering food), or an open line with no answers"),
+              ai_ended_call: bool("Send true to ask for the final go-ahead to close a non-urgent report, only after a wrap_up reply"),
               covert_cue: str("Short note on what made you think so, e.g. 'whispering', 'ordering a pizza', 'man shouting in background, no answers'"),
             }),
           },
@@ -154,7 +155,8 @@ export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
           temperature: 0,
           toolIds,
           builtInTools: {
-            // end_call deliberately omitted: the AI never hangs up on a 911 caller.
+            // Only used when update_incident replies wrap_up: true (non-urgent report, callback promised).
+            endCall: { name: "end_call", params: { systemToolType: "end_call" } },
             languageDetection: { name: "language_detection", params: { systemToolType: "language_detection" } },
             // Lets the agent stay silent instead of filling every pause.
             skipTurn: { name: "skip_turn", params: { systemToolType: "skip_turn" } },
