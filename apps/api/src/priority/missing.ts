@@ -7,8 +7,12 @@ export function computeMissing(i: Incident): string[] {
   const covert = i.call_state.covert;
   if (!i.location.address && !i.location.landmark) m.push("location");
   else if (!i.location.read_back_confirmed) m.push("location.read_back_confirmed");
-  if (!covert && (!i.caller.phone || !i.caller.callback_confirmed)) m.push("caller.callback");
+  // No caller ID (e.g. a web test call): ask for a number. Caller ID known: confirm it.
+  if (!covert && !i.caller.phone) m.push("caller.phone");
+  else if (!covert && !i.caller.callback_confirmed) m.push("caller.callback");
   if (!i.incident.type) m.push("incident.type");
+  // Anyone hurt decides whether this can be a non-urgent report, so ask it for every real incident.
+  if (i.incident.type && i.incident.type !== "other" && i.people.injured === null) m.push("people.injured");
 
   const hurt = i.incident.type === "medical" || (i.people.injured ?? 0) > 0;
   if (hurt) {
@@ -50,5 +54,5 @@ export function mayEndCall(i: Incident): boolean {
 
 /** Triage complete when location, type, the P1 checks and caller safety are known. */
 export function isTriageComplete(missing: string[]): boolean {
-  return !missing.some((f) => f !== "people.involved" && f !== "caller.callback");
+  return !missing.some((f) => f !== "people.involved" && f !== "caller.callback" && f !== "caller.phone");
 }

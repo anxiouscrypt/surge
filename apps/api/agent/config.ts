@@ -138,8 +138,14 @@ export const DATA_COLLECTION = {
   language: dc("string", "ISO code of the caller's language"),
 };
 
-const NO_INSTRUCTIONS =
-  "Block any response that gives medical, first-aid, CPR, rescue, fire-safety or self-defense instructions, or that promises an arrival time. Allowed: asking questions, 'Stay on the line', 'If you're in danger, move somewhere safe', 'A dispatcher will help you with that'.";
+const NO_INSTRUCTIONS = [
+  "Block ONLY a response that tells the caller how to do one of these: treat an injury or illness (first aid, CPR, medication, positioning someone),",
+  "rescue someone, fight or escape a fire, or defend themselves. Also block a response that promises when responders will arrive.",
+  "Everything else is allowed. In particular these are always allowed: asking questions; thanking the caller;",
+  "'Stay on the line'; 'If you're in danger, move somewhere safe'; 'A dispatcher will help you with that';",
+  "saying a dispatcher has the report or can see the call; saying someone will call the caller back (with no time);",
+  "'If anything changes or gets worse, call 911 again'.",
+].join(" ");
 
 export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
   return {
@@ -156,7 +162,15 @@ export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
           toolIds,
           builtInTools: {
             // Only used when update_incident replies wrap_up: true (non-urgent report, callback promised).
-            endCall: { name: "end_call", params: { systemToolType: "end_call" } },
+            endCall: {
+              name: "end_call",
+              description:
+                "Hang up. ONLY allowed right after update_incident replied \"ended\": true and you have read its `say` text. " +
+                "NEVER use it because the caller says bye, has to go, or goes quiet: on a 911 call only the caller hangs up. " +
+                "Leave the message to speak empty; you already said the closing.",
+              preToolSpeech: "off",
+              params: { systemToolType: "end_call" },
+            },
             languageDetection: { name: "language_detection", params: { systemToolType: "language_detection" } },
             // Lets the agent stay silent instead of filling every pause.
             skipTurn: { name: "skip_turn", params: { systemToolType: "skip_turn" } },

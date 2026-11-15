@@ -130,6 +130,7 @@ describe("covert calls", async () => {
   it("never asks for a callback number or whether the caller is safe", () => {
     const m = computeMissing(make({ call_state: { covert: true } }));
     expect(m).not.toContain("caller.callback");
+    expect(m).not.toContain("caller.phone");
     expect(m).not.toContain("caller.caller_safe");
     expect(m[0]).toBe("location");
   });
@@ -222,5 +223,18 @@ describe("closing non-urgent reports", async () => {
   it("never wraps up a covert call", async () => {
     const reply = await report("close_5", { call_state: { covert: true } });
     expect(reply.wrap_up).toBeUndefined();
+  });
+});
+
+describe("missing checklist for reports", () => {
+  it("asks for a number when there is no caller ID, and whether anyone is hurt", () => {
+    const m = computeMissing(make({ incident: { type: "traffic" }, caller: { callback_confirmed: true } }));
+    expect(m).toContain("caller.phone");
+    expect(m).toContain("people.injured");
+  });
+  it("only confirms the number when caller ID is known", () => {
+    const m = computeMissing(make({ caller: { phone: "+17345550100" } }));
+    expect(m).toContain("caller.callback");
+    expect(m).not.toContain("caller.phone");
   });
 });
