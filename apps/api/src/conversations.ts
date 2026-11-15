@@ -45,7 +45,8 @@ async function syncOne(callId: string) {
   // Caller-page calls send their own transcript; only fill it for phone and talk-to calls.
   if (inc.channel !== "app_voice" && inc.channel !== "app_text") {
     const lines = (conv.transcript ?? []).filter((t) => (t.role === "user" || t.role === "agent") && t.message?.trim());
-    const from = seen.get(callId) ?? 0;
+    // After a restart the transcript comes back from disk: continue after what is already shown.
+    const from = seen.get(callId) ?? store.transcripts()[callId]?.length ?? 0;
     for (const t of lines.slice(from)) {
       const role = t.role === "user" ? "caller" : "agent";
       const lang = inc.caller.language ?? "en";
