@@ -10,7 +10,8 @@
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "agent:setup": "tsx --env-file=../../.env agent/setup.ts",
-    "eval:triage": "tsx --env-file=../../.env eval/triage.ts"
+    "eval:triage": "tsx --env-file=../../.env eval/triage.ts",
+    "agent:test": "tsx --env-file=../../.env agent/tests.ts"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.78.0",
