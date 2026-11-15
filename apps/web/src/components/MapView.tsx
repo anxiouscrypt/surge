@@ -13,6 +13,7 @@ import {
 } from "../lib/nasa";
 import { PRIORITY_COLOR, HOME } from "../lib/presentation";
 import { Icon } from "./Icon";
+import { regionalBounds, type MapBounds } from "../lib/nasaLinks";
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? "";
 maplibregl.setWorkerUrl(mapWorkerUrl);
@@ -34,6 +35,7 @@ type Props = {
   request: MapRequest | null;
   follow: boolean;
   panelOpen: boolean;
+  onBounds: (bounds: MapBounds | null) => void;
   onEvent: (event: NaturalEvent) => void;
 };
 const STREET_STYLE: maplibregl.StyleSpecification = {
@@ -122,7 +124,19 @@ export function MapView(props: Props) {
       new maplibregl.ScaleControl({ unit: "metric", maxWidth: 100 }),
       "bottom-left",
     );
+    const publishBounds = () => {
+      const bounds = m.getBounds();
+      latest.current.onBounds(
+        regionalBounds(
+          bounds.getWest(),
+          bounds.getSouth(),
+          bounds.getEast(),
+          bounds.getNorth(),
+        ),
+      );
+    };
     const onLoad = () => {
+      publishBounds();
       mapLoaded.current = true;
       setReady(true);
       setError(null);
@@ -131,6 +145,7 @@ export function MapView(props: Props) {
     m.on("moveend", () => {
       const c = m.getCenter();
       setCenter([c.lng, c.lat]);
+      publishBounds();
     });
     m.on("error", (e) => {
       const sourceId = (e as typeof e & { sourceId?: string }).sourceId;
@@ -141,6 +156,7 @@ export function MapView(props: Props) {
       if (!m.isStyleLoaded() && !sourceId)
         setError("Map tiles could not load. Check the network or map token.");
     });
+    m.on("resize", publishBounds);
     const observer = new ResizeObserver(() => m.resize());
     observer.observe(el.current);
     return () => {
@@ -235,7 +251,8 @@ export function MapView(props: Props) {
   useEffect(() => {
     const m = map.current;
     // A retained Home/Fit request must not override the selected caller after hot reload.
-    if (!m || !ready || !mapLoaded.current || !props.request || props.selected) return;
+    if (!m || !ready || !mapLoaded.current || !props.request || props.selected)
+      return;
     const { center: target, zoom, fit } = props.request;
     if (fit) {
       const points = latest.current.incidents.filter(
@@ -364,7 +381,7 @@ export function MapView(props: Props) {
         const heading = document.createElement("strong");
         heading.textContent = "NASA FIRMS detection";
         const detail = document.createElement("p");
-        detail.textContent = `Detected ${ageLabel(date)}. Satellite observation; not a fire perimeter.`;
+        detail.textContent = `Detected ${ageLabel(date)}. VIIRS 375 m thermal-anomaly pixel; not a fire perimeter.`;
         content.append(heading, detail);
         new maplibregl.Popup({ offset: 12, maxWidth: "260px" })
           .setLngLat(e.lngLat)

@@ -20,7 +20,7 @@ Caller pins use backend-provided `location.lat` and `location.lng`; the browser 
 - `GET /dispatchers`: array of `{id,name,phone,status}`. The panel selects a dispatcher with a configured phone. Missing destinations are disabled.
 - `POST /incidents/:call_id/take`: `{dispatcher_id}`; response `{ok,transferred,error,callback}`. A failed transfer stays visibly unconfirmed and offers retry and callback. A successful response confirms the redirect request, not that a human answered.
 - `POST /incidents/:call_id/status`: `{status:"dispatched"|"closed"}`; response `{ok:true}`.
-- `GET /hazards/fires`: array of `{lat:number,lng:number,detectedAt:ISO8601}`; refreshed every five minutes. **The backend must fetch real FIRMS detections. Its current empty stub correctly shows “No detections reported by backend”; it is not represented as a verified all-clear.** The UI renders detection age and distinguishes retrieval failure from an empty response.
+- `GET /hazards/fires`: flat-array compatibility remains available. The dashboard uses `?metadata=1&bbox=west,south,east,north` for `{fires,meta}` with region coverage, source, acquisition freshness and retrieval status. The real FIRMS adapter is implemented; set the server-side `FIRMS_MAP_KEY` to enable authenticated fetching. Missing credentials, valid empty coverage, stale cache and upstream errors are distinct states. See [NASA integration](NASA-DATA.md).
 
 Transfer and status actions are disabled while disconnected. Only the backend determines incident priority; map overlays do not modify triage locally.
 

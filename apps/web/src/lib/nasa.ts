@@ -1,10 +1,30 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FeatureCollection, Geometry, Position } from "geojson";
 import { API_URL } from "./api";
+import { IMAGERY_DATASET, type MapBounds } from "./nasaLinks";
 
-export const NASA_LAYER = "VIIRS_NOAA20_CorrectedReflectance_TrueColor";
+export const NASA_LAYER = IMAGERY_DATASET;
 const GIBS = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best";
-export type FirePoint = { lat: number; lng: number; detectedAt: string };
+export type FirePoint = {
+  lat: number;
+  lng: number;
+  detectedAt: string;
+  confidence?: "l" | "n" | "h";
+  source?: string;
+  frp?: number;
+};
+export type FireMeta = {
+  state: "ready" | "stale" | "unconfigured" | "error" | "zoom_required";
+  source: string;
+  resolutionMeters: number;
+  bbox: MapBounds | null;
+  windowHours: number;
+  fetchedAt: string | null;
+  latestDetectionAt: string | null;
+  warning: string | null;
+};
+export type FireFeed = Feed<FirePoint[]> & { meta: FireMeta | null };
+type FireResponse = { fires: FirePoint[]; meta: FireMeta | null };
 export type NaturalEvent = {
   id: string;
   title: string;
@@ -18,6 +38,7 @@ export type Feed<T> = {
   loading: boolean;
   error: string | null;
   fetchedAt: number | null;
+  refresh?: () => void;
 };
 export type Layers = { fires: boolean; events: boolean; imagery: boolean };
 const coordinatesValid = (value: unknown): boolean =>
@@ -119,8 +140,38 @@ const fetchEvents = async (signal: AbortSignal) =>
       signal,
     ),
   );
-const fetchFires = async (signal: AbortSignal) =>
-  parseFires(await json(`${API_URL}/hazards/fires`, signal));
+async function fetchFireArea(
+  bounds: MapBounds | null,
+  signal: AbortSignal,
+): Promise<FireResponse> {
+  if (!bounds)
+    return {
+      fires: [],
+      meta: {
+        state: "zoom_required",
+        source: "VIIRS_NOAA20_NRT",
+        resolutionMeters: 375,
+        bbox: null,
+        windowHours: 24,
+        fetchedAt: null,
+        latestDetectionAt: null,
+        warning: "Zoom in to a regional view to load fire detections.",
+      },
+    };
+  const url = `${API_URL}/hazards/fires?metadata=1&bbox=${bounds.join(",")}`;
+  const result = (await json(url, signal)) as
+    | { fires?: unknown; meta?: FireMeta }
+    | unknown[];
+  // Keep compatibility with an older backend during rolling integration.
+  if (Array.isArray(result)) return { fires: parseFires(result), meta: null };
+  if (
+    !result ||
+    !result.meta ||
+    !["ready", "stale", "unconfigured", "error"].includes(result.meta.state)
+  )
+    throw new Error("Fire-data provenance is unavailable.");
+  return { fires: parseFires(result.fires), meta: result.meta };
+}
 async function fetchImageryDate(signal: AbortSignal): Promise<string> {
   const response = await fetch(`${GIBS}/1.0.0/WMTSCapabilities.xml`, {
     signal,
@@ -145,6 +196,11 @@ function useFeed<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
   interval: number,
 ): Feed<T> {
+  const [revision, setRevision] = useState(0);
+  const refreshNow = useCallback(
+    () => setRevision((current) => current + 1),
+    [],
+  );
   const [feed, setFeed] = useState<Feed<T>>({
     data: initial,
     loading: true,
@@ -153,6 +209,7 @@ function useFeed<T>(
   });
   useEffect(() => {
     let stopped = false;
+    setFeed({ data: initial, loading: true, error: null, fetchedAt: null });
     let timer: ReturnType<typeof setTimeout>;
     let controller: AbortController;
     const refresh = async () => {
@@ -180,15 +237,39 @@ function useFeed<T>(
       clearTimeout(timer);
       controller?.abort();
     };
-  }, [fetcher, interval]);
-  return feed;
+  }, [fetcher, interval, initial, revision]);
+  return { ...feed, refresh: refreshNow };
 }
 const NO_EVENTS: NaturalEvent[] = [];
-const NO_FIRES: FirePoint[] = [];
-export function useNasa() {
+const NO_FIRE_RESPONSE: FireResponse = { fires: [], meta: null };
+export function useNasa(bounds: MapBounds | null) {
+  const area = bounds?.join(",") ?? "";
+  const fetchArea = useCallback(
+    (signal: AbortSignal) =>
+      fetchFireArea(
+        area ? (area.split(",").map(Number) as MapBounds) : null,
+        signal,
+      ),
+    [area],
+  );
   const events = useFeed(NO_EVENTS, fetchEvents, 10 * 60000);
-  const fires = useFeed(NO_FIRES, fetchFires, 5 * 60000);
+  const observations = useFeed(NO_FIRE_RESPONSE, fetchArea, 5 * 60000);
   const imagery = useFeed<string | null>(null, fetchImageryDate, 60 * 60000);
+  const meta = observations.data.meta;
+  const fires: FireFeed = {
+    data: observations.data.fires,
+    loading: observations.loading,
+    error:
+      observations.error ??
+      (meta && ["error", "unconfigured", "stale"].includes(meta.state)
+        ? meta.warning
+        : null),
+    fetchedAt: meta?.fetchedAt
+      ? Date.parse(meta.fetchedAt)
+      : observations.fetchedAt,
+    meta,
+    refresh: observations.refresh,
+  };
   return { events, fires, imagery };
 }
 export function eventGeoJSON(events: NaturalEvent[]): FeatureCollection {
@@ -218,6 +299,8 @@ export function fireGeoJSON(
       properties: {
         detectedAt: fire.detectedAt,
         age: Math.max(0, (now - Date.parse(fire.detectedAt)) / 60000),
+        confidence: fire.confidence ?? "unknown",
+        source: fire.source ?? "NASA FIRMS",
       },
     })),
   };

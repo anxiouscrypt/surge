@@ -48,3 +48,9 @@ Take-over redirects the live Twilio call (captured from `system__call_sid`) to `
 - No medical, rescue or safety instructions from the AI.
 - Priority comes from deterministic rules; AI layers can only raise it, never lower it.
 - Every call ends with a human. Only synthetic data was used for the classifier.
+
+## NASA Earth data
+
+Surge combines NASA EONET event observations, GIBS/Worldview VIIRS NOAA-20 imagery, and FIRMS thermal-anomaly detections for regional context and caller proximity. Dates, dataset sources, coverage, and limits are shown in the map controls. See [NASA data and setup](docs/NASA-DATA.md) for API contracts and the separate FIRMS key requirement.
+
+Supported by the Michigan Space Grant Consortium, NASA grant 80NSSC20M0124.

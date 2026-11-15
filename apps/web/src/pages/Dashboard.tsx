@@ -9,6 +9,8 @@ import { Icon } from "../components/Icon";
 import { sortQueue, useIncidents } from "../lib/socket";
 import { ageLabel, useNasa, type Layers, type NaturalEvent } from "../lib/nasa";
 
+import type { MapBounds } from "../lib/nasaLinks";
+
 const NO_LINES: never[] = [];
 export default function Dashboard() {
   const [demo] = useState(
@@ -16,7 +18,17 @@ export default function Dashboard() {
   );
   const { incidents, transcripts, connection, lastUpdate, updateDemo } =
     useIncidents(demo);
-  const nasa = useNasa();
+  const [bounds, setBounds] = useState<MapBounds | null>([
+    -84.13, 42.07, -83.54, 42.43,
+  ]);
+  const onBounds = useCallback(
+    (next: MapBounds | null) =>
+      setBounds((previous) =>
+        previous?.join(",") === next?.join(",") ? previous : next,
+      ),
+    [],
+  );
+  const nasa = useNasa(bounds);
   const [now, setNow] = useState(Date.now());
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"waiting" | "taken">("waiting");
@@ -153,6 +165,7 @@ export default function Dashboard() {
           request={mapRequest}
           follow={follow}
           panelOpen={!!current}
+          onBounds={onBounds}
           onEvent={showEvent}
         />
         <div className="map-context">
@@ -313,6 +326,7 @@ export default function Dashboard() {
         </div>
         {!current && (
           <NasaControls
+            bounds={bounds}
             events={nasa.events}
             fires={nasa.fires}
             imagery={nasa.imagery}
