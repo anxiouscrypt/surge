@@ -182,7 +182,7 @@ export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
         language: "en",
         prompt: {
           prompt: readFileSync(here("./prompt.md"), "utf8"),
-          llm: "gemini-2.5-flash",
+          llm: "gemini-3.5-flash",
           temperature: 0,
           toolIds,
           builtInTools: {

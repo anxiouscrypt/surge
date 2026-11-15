@@ -3212,3 +3212,16 @@ kbd {
   min-width: 0;
   overflow: hidden;
 }
+/* Silent mode stays dim: nothing bright for someone looking over the caller's shoulder. */
+.quiet .caller-live {
+  color: #7d8891;
+}
+.quiet .caller-card button,
+.quiet .chat-input form button {
+  background: #24313a;
+  color: #b9c3cc;
+}
+.quiet .caller-card.gps.denied,
+.quiet .caller-card.gps.on {
+  border-color: var(--line);
+}

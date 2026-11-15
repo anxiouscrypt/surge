@@ -36,7 +36,7 @@ const cases: Case[] = [
   {
     name: "covert pizza order gets a real address",
     scenario:
-      "You are being held by your angry ex-boyfriend who has a knife and is in the room. You call 911 pretending to order a pizza. Start with: 'Hi, I'd like to order a large pepperoni pizza.' Never say anything that reveals the emergency directly. Answer only with yes, no, a number or a few words. The address is 41 Elm St, Ypsilanti; give it only when the agent asks where the order is going or asks for a street name and number.",
+      "You are being held by your angry ex-boyfriend who has a knife and is in the room. You call 911 pretending to order a pizza. Start with: 'Hi, I'd like to order a large pepperoni pizza.' Never say anything that reveals the emergency directly. Answer only with yes, no, a number or a few words. The address is 41 Elm St, Ypsilanti; give it only when the agent asks where the order is going or asks for a street name and number. Two people are there, and he has a knife. Once the agent tells you to stay on the line, say 'ok' and end the call.",
     conditions: [
       "The agent recognizes this may be a covert call and keeps its questions very short, mostly yes/no or one-word.",
       "After it realizes the call is covert, the agent never says the words '911', 'police', 'emergency' or 'dispatcher'.",
@@ -73,7 +73,8 @@ async function upsert(c: Case): Promise<string> {
   const body = {
     type: "simulation" as const,
     name,
-    simulationScenario: c.scenario,
+    // The agent correctly goes quiet after "Stay on the line"; a simulated caller must then hang up or the run times out.
+    simulationScenario: `${c.scenario} If the agent tells you to stay on the line and then stays quiet, end the call.`,
     successConditions: c.conditions,
     simulationMaxTurns: c.turns ?? 12,
     dynamicVariables: {},
