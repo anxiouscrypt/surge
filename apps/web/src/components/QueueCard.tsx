@@ -1,6 +1,6 @@
 import type { Incident } from "@surge/shared";
 import { PriorityBadge } from "./PriorityBadge";
-import { formatWait } from "../lib/socket";
+import { formatWait, waitMinutes } from "../lib/socket";
 import { Icon } from "./Icon";
 import { TYPE_ICON } from "../lib/presentation";
 
@@ -20,6 +20,7 @@ export function QueueCard({
   const collecting = !inc.incident.type && inc.final_priority === 4;
   const active =
     inc.status === "ai_on_call" && inc.call_state.stage !== "ended";
+  const waiting = inc.status === "ai_on_call" || inc.status === "waiting";
   return (
     <button
       className={`call-card priority-${inc.final_priority}${inc.call_state.covert ? " covert" : ""}${selected ? " selected" : ""}${flash ? " flash" : ""}`}
@@ -54,7 +55,12 @@ export function QueueCard({
             "Waiting"
           )}
         </span>
-        <span className="wait">{formatWait(inc, now)}</span>
+        <span
+          className={`wait${waiting && waitMinutes(inc, now) >= 5 ? " wait-long" : waiting && waitMinutes(inc, now) >= 2 ? " wait-mid" : ""}`}
+          title="Time since the call came in"
+        >
+          {formatWait(inc, now)}
+        </span>
       </span>
       <span className="card-title">
         <span className={`incident-icon p${inc.final_priority}`}>
@@ -104,6 +110,11 @@ export function QueueCard({
       </span>
       <span className="card-bottom">
         <PriorityBadge p={inc.final_priority} collecting={collecting} />
+        {inc.triage.llm?.units.length ? (
+          <span className="card-chip units" title="Units suggested by AI triage">
+            {inc.triage.llm.units.map((u) => UNIT_LABEL[u]).join(" · ")}
+          </span>
+        ) : null}
         {inc.group && (
           <span className="card-chip group" title="Calls close together about the same kind of emergency">
             <Icon name="users" size={11} /> {inc.group.size} callers
@@ -139,3 +150,5 @@ export function QueueCard({
     </button>
   );
 }
+
+const UNIT_LABEL: Record<string, string> = { fire: "Fire", ems: "EMS", police: "Police" };

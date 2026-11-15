@@ -1,6 +1,7 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { logger } from "hono/logger";
 import type { Server } from "node:http";
 import { config } from "./config.js";
@@ -15,17 +16,32 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadPlaces } from "./geo/places.js";
+import { restoreSnapshot } from "./store/memory.js";
 import { smsEnabled } from "./telephony/twilio.js";
 import { startReplay } from "./demo/replay.js";
-import { viaTunnel } from "./routes/incidents.js";
+import { dispatcherAllowed, viaTunnel } from "./auth.js";
 import { refreshFires } from "./hazards/firms.js";
 import { geminiEnabled } from "./ai/gemini.js";
+
+const restored = restoreSnapshot();
+if (restored) console.log(`restored ${restored} calls from the last run`);
 
 const app = new Hono();
 app.use("*", logger());
 app.use("*", cors());
+// Photos up to 15 MB; everything else is small JSON.
+app.use("*", async (c, next) => {
+  const max = /\/caller\/[^/]+\/media$/.test(c.req.path) ? 15 * 1024 * 1024 : 256 * 1024;
+  return bodyLimit({ maxSize: max, onError: (cc) => cc.json({ error: "Request too large" }, 413) })(c, next);
+});
 
 app.get("/health", (c) => c.json({ ok: true, ai_triage: geminiEnabled() }));
+// Dispatcher-only data: open on the laptop, key required through the public link.
+for (const path of ["/incidents", "/incidents/*", "/dispatchers", "/dispatchers/*", "/media/*", "/demo/*"])
+  app.use(path, async (c, next) => {
+    if (!dispatcherAllowed(c.req.raw.headers, new URL(c.req.url))) return c.json({ error: "Dashboard key required" }, 401);
+    await next();
+  });
 app.route("/tools", tools);
 app.route("/incidents", incidents);
 app.route("/dispatchers", dispatcherRoutes);
@@ -46,6 +62,7 @@ app.get("/config", (c) =>
     phone_number: process.env.TWILIO_PHONE_NUMBER || null,
     voice: !!(process.env.ELEVENLABS_AGENT_ID && process.env.ELEVENLABS_API_KEY),
     ai_triage: geminiEnabled(),
+    dashboard_locked: !dispatcherAllowed(c.req.raw.headers, new URL(c.req.url)),
   }),
 );
 

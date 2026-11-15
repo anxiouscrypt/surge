@@ -12,13 +12,19 @@ import { bindTicket, callForTicket, issueTicket } from "../caller/tickets.js";
 import { placed, rescore } from "../pipeline.js";
 import { reverseGeocode } from "../geo/geocode.js";
 import { haversineKm } from "../hazards/firms.js";
+import { limiter, clientIp } from "../limit.js";
 import { describePhoto, scheduleLlmTriage, translateToEnglish } from "../ai/gemini.js";
 
 export const caller = new Hono();
+// Each session starts a paid voice conversation: a few per person is plenty, even for retries.
+const sessionLimit = limiter(Number(process.env.CALLER_SESSIONS_PER_10MIN ?? 8), 10 * 60000);
+const mediaLimit = limiter(20, 30 * 60000); // per call
+const lineLimit = limiter(600, 60 * 60000); // transcript lines per call
 const mediaDir = fileURLToPath(new URL("../../data/media/", import.meta.url));
 let eleven: ElevenLabsClient | null = null;
 
 caller.post("/session", async (c) => {
+  if (!sessionLimit(clientIp(c.req.raw.headers))) return c.json({ error: "Too many calls from this device. Wait a few minutes, or call 911." }, 429);
   const agentId = process.env.ELEVENLABS_AGENT_ID?.trim();
   if (!agentId || !process.env.ELEVENLABS_API_KEY) return c.json({ error: "Voice agent is not configured" }, 503);
   try {
@@ -137,6 +143,7 @@ caller.post("/:id/transcript", async (c) => {
   const body = z.object({ role: z.enum(["agent", "caller"]), text: z.string().min(1).max(2000) }).safeParse(await c.req.json().catch(() => null));
   const inc = store.get(c.req.param("id"));
   if (!body.success || !inc) return c.json({ ok: false }, 400);
+  if (!lineLimit(inc.call_id)) return c.json({ ok: false }, 429);
   const lang = inc.caller.language ?? inc.device?.language ?? "en";
   const en = lang.toLowerCase().startsWith("en") ? null : await translateToEnglish(body.data.text);
   store.addLine(inc.call_id, { ...body.data, at: new Date().toISOString(), ...(en && en !== body.data.text ? { en } : {}) });
@@ -150,6 +157,7 @@ caller.post("/:id/media", async (c) => {
   const inc = store.get(c.req.param("id"));
   const type = (c.req.header("content-type") ?? "").split(";")[0].trim();
   if (!inc || !EXT[type]) return c.json({ error: "Send a photo or video" }, 400);
+  if (!mediaLimit(inc.call_id)) return c.json({ error: "That's the most photos one call can send" }, 429);
   if (Number(c.req.header("content-length") ?? 0) > MAX_MEDIA) return c.json({ error: "File too large" }, 413);
   const buf = Buffer.from(await c.req.arrayBuffer());
   if (buf.length > MAX_MEDIA) return c.json({ error: "File too large" }, 413);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Incident } from "@surge/shared";
-import { API_URL, post, request, type Dispatcher, type TakeResult } from "../lib/api";
+import { mediaUrl, post, request, type Dispatcher, type TakeResult } from "../lib/api";
 import type { Takeover } from "../lib/takeover";
 import { formatWait, type TranscriptLine } from "../lib/socket";
 import { PriorityBadge } from "./PriorityBadge";
@@ -44,6 +44,8 @@ export function IncidentPanel({
 }) {
   const [tab, setTab] = useState<"overview" | "timeline" | "transcript">("overview");
   const [reply, setReply] = useState("");
+  const [ask, setAsk] = useState("");
+  const [askState, setAskState] = useState<string | null>(null);
   const live = takeover.live?.callId === inc.call_id ? takeover.live : null;
   // Caller is on the Surge caller page right now: take over in the browser, no phone needed.
   const appOnline = !!inc.device?.online && inc.channel !== "phone" && inc.channel !== "unknown";
@@ -326,6 +328,17 @@ export function IncidentPanel({
                   AI triage has not been received.
                 </small>
               )}
+              {inc.triage.llm && inc.triage.llm.units.length > 0 && (
+                <div className="units-row">
+                  <span>Suggested units</span>
+                  {inc.triage.llm.units.map((u) => (
+                    <b key={u} className={`unit-chip ${u}`}>
+                      {u === "ems" ? "EMS" : u[0].toUpperCase() + u.slice(1)}
+                    </b>
+                  ))}
+                  <small>{Math.round(inc.triage.llm.confidence * 100)}% confident</small>
+                </div>
+              )}
             </section>
             {inc.group && (
               <section className="detail-section group-section">
@@ -395,11 +408,11 @@ export function IncidentPanel({
                 </span>
                 <div className="media-grid">
                   {inc.media.map((m) => (
-                    <a key={m.id} href={`${API_URL}${m.url}`} target="_blank" rel="noreferrer" className="media-item">
+                    <a key={m.id} href={mediaUrl(m.url)} target="_blank" rel="noreferrer" className="media-item">
                       {m.kind === "photo" ? (
-                        <img src={`${API_URL}${m.url}`} alt={m.caption ?? "Photo from the caller"} loading="lazy" />
+                        <img src={mediaUrl(m.url)} alt={m.caption ?? "Photo from the caller"} loading="lazy" />
                       ) : (
-                        <video src={`${API_URL}${m.url}`} muted playsInline preload="metadata" />
+                        <video src={mediaUrl(m.url)} muted playsInline preload="metadata" />
                       )}
                       <span>{m.caption ?? (m.kind === "photo" ? "AI is describing the photo…" : "Video")}</span>
                     </a>
@@ -493,6 +506,33 @@ export function IncidentPanel({
                     </span>
                   )}
                 </div>
+              </section>
+            )}
+            {!demo && appOnline && inc.status === "ai_on_call" && inc.call_state.stage !== "ended" && (
+              <section className="detail-section">
+                <span className="section-eyebrow">STEER THE AI</span>
+                <form
+                  className="dispatcher-chat ask-ai"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const question = ask.trim();
+                    if (!question) return;
+                    setAskState("Sending…");
+                    try {
+                      await post(`/incidents/${encodeURIComponent(inc.call_id)}/ask`, { question });
+                      setAsk("");
+                      setAskState("The AI will ask this next.");
+                    } catch (err) {
+                      setAskState((err as Error).message);
+                    }
+                  }}
+                >
+                  <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="e.g. Are there pets inside?" aria-label="Question for the AI to ask" maxLength={200} />
+                  <button type="submit" disabled={!ask.trim()} aria-label="Ask">
+                    <Icon name="send" size={15} />
+                  </button>
+                </form>
+                {askState && <small className="muted">{askState}</small>}
               </section>
             )}
             {inc.call_state.missing.length > 0 && (

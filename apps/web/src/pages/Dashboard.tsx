@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTakeover } from "../lib/takeover";
 import { alertsMuted, chime, setAlertsMuted } from "../lib/alert";
 import { DemoTools } from "../components/DemoTools";
+import { request } from "../lib/api";
 import { MapView, type MapRequest } from "../components/MapView";
 import { HOME } from "../lib/presentation";
 import { QueueCard } from "../components/QueueCard";
@@ -16,6 +17,33 @@ import type { MapBounds } from "../lib/nasaLinks";
 
 const NO_LINES: never[] = [];
 export default function Dashboard() {
+  const [locked, setLocked] = useState(false);
+  useEffect(() => {
+    request<{ dashboard_locked?: boolean }>("/config")
+      .then((c) => setLocked(!!c.dashboard_locked))
+      .catch(() => undefined);
+  }, []);
+  if (locked) return <Locked />;
+  return <DashboardView />;
+}
+
+/** Public link without the dashboard key: callers' data stays private. */
+function Locked() {
+  return (
+    <div className="locked-page">
+      <span className="brand-mark">
+        <Icon name="shield" size={34} />
+      </span>
+      <h1>Dispatcher dashboard</h1>
+      <p>This view shows other callers' locations and calls, so it needs the dashboard link from the dispatcher laptop.</p>
+      <a className="text-button" href="/c">
+        <Icon name="phone" size={16} /> Report an emergency instead
+      </a>
+    </div>
+  );
+}
+
+function DashboardView() {
   const [demo] = useState(
     () => new URLSearchParams(window.location.search).get("demo") === "1",
   );

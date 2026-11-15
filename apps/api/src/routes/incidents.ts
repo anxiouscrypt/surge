@@ -6,6 +6,7 @@ import { callSids } from "../pipeline.js";
 import { transferCall } from "../telephony/twilio.js";
 import { callerOnline, sendToCaller } from "../ws.js";
 import { note } from "../store/memory.js";
+import { viaTunnel } from "../auth.js";
 
 export const incidents = new Hono();
 
@@ -64,6 +65,19 @@ incidents.post("/:id/takeover", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Dispatcher asks the AI to ask the caller something (caller-page calls only: delivered as a note to the agent). */
+incidents.post("/:id/ask", async (c) => {
+  const inc = store.get(c.req.param("id"));
+  if (!inc) return c.json({ error: "not found" }, 404);
+  const body = z.object({ question: z.string().trim().min(2).max(200) }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "Write a short question" }, 400);
+  if (inc.status !== "ai_on_call" || inc.call_state.stage === "ended") return c.json({ error: "The AI is no longer on this call" }, 409);
+  if (!sendToCaller(inc.call_id, { type: "ask", text: body.data.question })) return c.json({ error: "Only works while the caller is on the Surge caller page" }, 409);
+  note(inc, "dispatcher", `Asked the AI to ask: "${body.data.question}"`);
+  store.save(inc, ["timeline"]);
+  return c.json({ ok: true });
+});
+
 incidents.post("/:id/note", async (c) => {
   const inc = store.get(c.req.param("id"));
   if (!inc) return c.json({ error: "not found" }, 404);
@@ -72,9 +86,6 @@ incidents.post("/:id/note", async (c) => {
   store.save(inc, ["timeline"]);
   return c.json({ ok: true });
 });
-
-/** Requests through the public tunnel carry Cloudflare headers; the demo laptop's own requests do not. */
-export const viaTunnel = (h: Headers) => h.has("cf-connecting-ip") || h.has("cf-ray");
 
 /** Clear every call (before a demo). Only from the demo laptop, never through the public link. */
 incidents.post("/reset", (c) => {

@@ -6,9 +6,11 @@ import "./styles.css";
 import Dashboard from "./pages/Dashboard";
 import Responder from "./pages/Responder";
 import Caller from "./pages/Caller";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <ErrorBoundary>
     <BrowserRouter
       future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
     >
@@ -19,5 +21,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/c/:ticket" element={<Caller />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 );

@@ -9,6 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -64,7 +65,9 @@ const publicUrl = await new Promise((resolve) => {
 if (!publicUrl) fail("The tunnel did not start in 30 s. Check the internet connection and run pnpm demo again.");
 
 log(`Starting the API on :${PORT}…`);
-const env = { ...process.env, PUBLIC_BASE_URL: publicUrl, PORT: String(PORT) };
+// Dashboard key: needed to open the dashboard through the public link (the laptop needs none).
+const dashboardKey = process.env.DASHBOARD_KEY || randomBytes(9).toString("base64url");
+const env = { ...process.env, PUBLIC_BASE_URL: publicUrl, PORT: String(PORT), DASHBOARD_KEY: dashboardKey };
 const api = spawn("pnpm", ["--filter", "@surge/api", "start"], { cwd: root, env, stdio: ["ignore", "inherit", "inherit"] });
 children.push(api);
 api.on("exit", (code) => fail(`The API stopped (exit ${code}).`));
@@ -89,7 +92,7 @@ if (setup.status !== 0) log("⚠ agent:setup failed: live calls will not reach t
 console.log(`
 \x1b[32m Surge is live.\x1b[0m
    Dashboard (this laptop):   http://localhost:${PORT}
-   Dashboard (anywhere):      ${publicUrl}
+   Dashboard (other device):  ${publicUrl}/?key=${dashboardKey}   ← private, don't share
    Caller page (judges):      ${publicUrl}/c     ← the QR code in "Call from phone" opens this
    Replay a surge:            "Call from phone" → Replay a surge
 

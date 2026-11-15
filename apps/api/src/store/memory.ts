@@ -1,5 +1,7 @@
 // In-memory incident store + event bus. Swap persistence for Mongo in db/mongo.ts.
 import { EventEmitter } from "node:events";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { emptyIncident, type Incident, type ServerEvent, type TimelineEntry, type TranscriptLine } from "@surge/shared";
 
 const incidents = new Map<string, Incident>();
@@ -40,7 +42,50 @@ export const store = {
   },
 };
 
+// Snapshot to disk (debounced) so an API restart in the middle of a demo keeps every call.
+// Set SURGE_PERSIST=0 to keep everything in memory only (tests do).
+const dataDir = fileURLToPath(new URL("../../data/", import.meta.url));
+const snapshotFile = dataDir + "incidents.json";
+const persist = process.env.SURGE_PERSIST !== "0" && !process.env.VITEST;
+let saveTimer: NodeJS.Timeout | null = null;
+function scheduleSnapshot() {
+  if (!persist || saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      mkdirSync(dataDir, { recursive: true });
+      const tmp = snapshotFile + ".tmp";
+      writeFileSync(tmp, JSON.stringify({ incidents: [...incidents.values()], transcripts: Object.fromEntries(transcripts) }));
+      renameSync(tmp, snapshotFile); // atomic: never a half-written file
+    } catch (err) {
+      console.warn("could not save incidents", String(err).slice(0, 120));
+    }
+  }, 1000);
+}
+
+/** Load the last snapshot (called once at startup). Calls older than 12 hours are dropped. */
+export function restoreSnapshot(): number {
+  if (!persist || !existsSync(snapshotFile)) return 0;
+  try {
+    const data = JSON.parse(readFileSync(snapshotFile, "utf8")) as { incidents: Incident[]; transcripts: Record<string, TranscriptLine[]> };
+    const cutoff = Date.now() - 12 * 3600000;
+    for (const i of data.incidents ?? []) {
+      if (Date.parse(i.updated_at) < cutoff) continue;
+      const fresh = emptyIncident(i.call_id);
+      const merged = { ...fresh, ...i }; // fields added since the snapshot get their defaults
+      if (merged.device) merged.device.online = false; // no caller page is connected after a restart
+      incidents.set(i.call_id, merged);
+      if (data.transcripts?.[i.call_id]) transcripts.set(i.call_id, data.transcripts[i.call_id]);
+    }
+    return incidents.size;
+  } catch (err) {
+    console.warn("could not restore incidents", String(err).slice(0, 120));
+    return 0;
+  }
+}
+
 export function emit(e: ServerEvent) {
+  scheduleSnapshot();
   bus.emit("event", e);
 }
 

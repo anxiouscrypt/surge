@@ -3225,3 +3225,68 @@ kbd {
 .quiet .caller-card.gps.on {
   border-color: var(--line);
 }
+.locked-page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 16px;
+  text-align: center;
+  background: var(--bg);
+}
+.locked-page h1 {
+  margin: 0;
+  font-family: Manrope, sans-serif;
+  font-size: 28px;
+}
+.locked-page p {
+  margin: 0;
+  max-width: 42ch;
+  color: #a9b6c2;
+  line-height: 1.5;
+}
+.ask-ai {
+  margin-top: 8px;
+}
+.wait.wait-mid {
+  color: var(--p2);
+}
+.wait.wait-long {
+  color: var(--p1);
+  font-weight: 700;
+}
+.card-chip.units {
+  color: #c9d4dc;
+}
+.units-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.units-row small {
+  margin-left: auto;
+  font-size: 11px;
+}
+.unit-chip {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #eef3f7;
+  background: rgba(165, 191, 210, 0.12);
+  border: 1px solid var(--line);
+}
+.unit-chip.fire {
+  border-color: rgba(255, 140, 90, 0.5);
+}
+.unit-chip.ems {
+  border-color: rgba(255, 107, 107, 0.5);
+}
+.unit-chip.police {
+  border-color: rgba(120, 160, 255, 0.5);
+}

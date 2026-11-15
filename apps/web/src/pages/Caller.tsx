@@ -67,6 +67,23 @@ export default function Caller() {
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
   useEffect(() => () => stopEverything(), []);
+  // Keep the phone screen on during the call (location and audio stop when it locks).
+  const active = phase === "live" || phase === "handoff" || phase === "dispatcher";
+  useEffect(() => {
+    if (!active) return;
+    type Lock = { release: () => Promise<void> };
+    const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<Lock> } }).wakeLock;
+    let lock: Lock | null = null;
+    const acquire = () => {
+      if (document.visibilityState === "visible") wl?.request("screen").then((l) => (lock = l)).catch(() => undefined);
+    };
+    acquire();
+    document.addEventListener("visibilitychange", acquire);
+    return () => {
+      document.removeEventListener("visibilitychange", acquire);
+      void lock?.release().catch(() => undefined);
+    };
+  }, [active]);
 
   // Opened from a texted link during a phone call: share location and photos for that call.
   useEffect(() => {
@@ -199,6 +216,8 @@ export default function Caller() {
         if (m.type === "takeover") void takeover(m.dispatcher);
         else if (m.type === "rtc") void link.current?.handle(m.data as Signal);
         else if (m.type === "chat" && typeof m.text === "string") add({ role: "dispatcher", text: m.text });
+        else if (m.type === "ask" && typeof m.text === "string")
+          conv.current?.sendContextualUpdate(`[Dispatcher] Ask the caller next: ${m.text}`);
         else if (m.type === "ended") {
           stopEverything();
           setPhase("ended");
