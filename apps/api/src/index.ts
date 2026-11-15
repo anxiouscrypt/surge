@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { loadPlaces } from "./geo/places.js";
 import { restoreSnapshot } from "./store/memory.js";
 import { publicUrl } from "./publicUrl.js";
+import { startConversationSync } from "./conversations.js";
 import { smsEnabled } from "./telephony/twilio.js";
 import { startReplay } from "./demo/replay.js";
 import { dispatcherAllowed, viaTunnel } from "./auth.js";
@@ -83,4 +84,5 @@ attachWebSocket(server as Server);
 
 void refreshFires();
 void loadPlaces();
+startConversationSync();
 setInterval(refreshFires, 5 * 60 * 1000);

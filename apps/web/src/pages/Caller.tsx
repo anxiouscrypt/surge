@@ -177,6 +177,7 @@ export default function Caller() {
           console.info("voice agent disconnected", details);
           if (handingOff.current) return; // we ended the AI session to hand the caller to a dispatcher
           if (phaseRef.current === "live" || phaseRef.current === "starting") {
+            if (callId.current) void send("ended", {}); // e.g. the AI closed a non-urgent report
             stopEverything();
             setPhase("ended");
           }
@@ -360,6 +361,7 @@ export default function Caller() {
   }
 
   function hangUp() {
+    if (callId.current && ticket.current && !attached) void send("ended", {});
     stopEverything();
     setPhase("ended");
   }

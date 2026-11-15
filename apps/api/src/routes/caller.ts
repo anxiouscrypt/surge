@@ -7,13 +7,13 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { Incident } from "@surge/shared";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
-import { store, note } from "../store/memory.js";
+import { store, note, emit, nextSeq } from "../store/memory.js";
 import { bindTicket, callForTicket, issueTicket } from "../caller/tickets.js";
 import { placed, rescore } from "../pipeline.js";
 import { reverseGeocode } from "../geo/geocode.js";
 import { haversineKm } from "../hazards/firms.js";
 import { limiter, clientIp } from "../limit.js";
-import { describePhoto, scheduleLlmTriage, translateToEnglish } from "../ai/gemini.js";
+import { describePhoto, scheduleLlmTriage, translateToEnglish, triageAtCallEnd } from "../ai/gemini.js";
 
 export const caller = new Hono();
 // Each session starts a paid voice conversation: a few per person is plenty, even for retries.
@@ -87,6 +87,21 @@ caller.post("/:id/worse", async (c) => {
   rescore(inc);
   store.save(inc, ["call_state.worse"]);
   scheduleLlmTriage(inc);
+  return c.json({ ok: true });
+});
+
+/** The caller hung up on the caller page (or the AI closed the call). */
+caller.post("/:id/ended", async (c) => {
+  const inc = store.get(c.req.param("id"));
+  if (!inc) return c.json({ ok: false }, 404);
+  if (inc.call_state.stage !== "ended" && inc.call_state.stage !== "transferred" && inc.takeover?.state !== "connected") {
+    inc.call_state.stage = "ended";
+    if (inc.status === "ai_on_call") inc.status = "waiting";
+    note(inc, "system", "Caller ended the call");
+    store.save(inc, ["call_state.stage", "status"]);
+    emit({ type: "call.ended", call_id: inc.call_id, seq: nextSeq() });
+    triageAtCallEnd(inc.call_id);
+  }
   return c.json({ ok: true });
 });
 
