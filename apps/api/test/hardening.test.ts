@@ -32,3 +32,33 @@ describe("rate limiter", () => {
     expect([ok("a"), ok("a"), ok("a"), ok("b")]).toEqual([true, true, false, true]);
   });
 });
+
+import { emptyIncident } from "@surge/shared";
+import { backfill } from "../src/routes/webhooks.js";
+
+describe("post-call backfill", () => {
+  it("fills only unknown fields and never overwrites live facts", () => {
+    const i = emptyIncident("w");
+    i.patient.breathing = true; // confirmed live
+    const filled = backfill(i, {
+      breathing: { value: false },
+      trapped: { value: "true" },
+      people_injured: { value: 2 },
+      incident_type: { value: "Medical" },
+      address: { value: "15 N Huron St" },
+      weapon: { value: null },
+    });
+    expect(i.patient.breathing).toBe(true);
+    expect(i.people.trapped).toBe(true);
+    expect(i.people.injured).toBe(2);
+    expect(i.incident.type).toBe("medical");
+    expect(i.hazards.weapon).toBeNull();
+    expect(filled.sort()).toEqual(["incident.type", "location.address", "people.injured", "people.trapped"]);
+  });
+  it("never adds a callback number to a covert call", () => {
+    const i = emptyIncident("c");
+    i.call_state.covert = true;
+    backfill(i, { callback_number: { value: "+17345550100" } });
+    expect(i.caller.phone).toBeNull();
+  });
+});

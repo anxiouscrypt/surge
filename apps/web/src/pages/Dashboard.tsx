@@ -17,12 +17,14 @@ import type { MapBounds } from "../lib/nasaLinks";
 
 const NO_LINES: never[] = [];
 export default function Dashboard() {
-  const [locked, setLocked] = useState(false);
+  // Unknown until /config answers (fast); never flash other callers' data on a locked link.
+  const [locked, setLocked] = useState<boolean | null>(null);
   useEffect(() => {
     request<{ dashboard_locked?: boolean }>("/config")
       .then((c) => setLocked(!!c.dashboard_locked))
-      .catch(() => undefined);
+      .catch(() => setLocked(false)); // API down: the dashboard shows its own offline state
   }, []);
+  if (locked === null) return <div className="app" />;
   if (locked) return <Locked />;
   return <DashboardView />;
 }
