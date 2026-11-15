@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { loadPlaces } from "./geo/places.js";
 import { smsEnabled } from "./telephony/twilio.js";
 import { startReplay } from "./demo/replay.js";
+import { viaTunnel } from "./routes/incidents.js";
 import { refreshFires } from "./hazards/firms.js";
 import { geminiEnabled } from "./ai/gemini.js";
 
@@ -32,7 +33,10 @@ app.route("/webhooks", webhooks);
 app.route("/hazards", hazards);
 app.route("/caller", caller);
 app.route("/media", media);
-app.post("/demo/replay", (c) => (startReplay() ? c.json({ ok: true }) : c.json({ error: "A replay is already running" }, 409)));
+app.post("/demo/replay", (c) => {
+  if (viaTunnel(c.req.raw.headers)) return c.json({ error: "Run demo controls from the dashboard on the demo laptop (localhost)." }, 403);
+  return startReplay() ? c.json({ ok: true }) : c.json({ error: "A replay is already running" }, 409);
+});
 
 /** What the dashboard needs to show the caller QR code and feature status. */
 app.get("/config", (c) =>

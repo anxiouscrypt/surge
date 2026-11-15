@@ -73,8 +73,12 @@ incidents.post("/:id/note", async (c) => {
   return c.json({ ok: true });
 });
 
-/** Clear every call (before a demo). */
+/** Requests through the public tunnel carry Cloudflare headers; the demo laptop's own requests do not. */
+export const viaTunnel = (h: Headers) => h.has("cf-connecting-ip") || h.has("cf-ray");
+
+/** Clear every call (before a demo). Only from the demo laptop, never through the public link. */
 incidents.post("/reset", (c) => {
+  if (viaTunnel(c.req.raw.headers)) return c.json({ error: "Run demo controls from the dashboard on the demo laptop (localhost)." }, 403);
   store.clear();
   return c.json({ ok: true });
 });
