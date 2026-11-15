@@ -332,6 +332,14 @@ export default function Caller() {
     void send("transcript", { role: "caller", text: t });
   }
 
+  async function reportWorse() {
+    if (!callId.current) return;
+    await send("worse", {});
+    conv.current?.sendContextualUpdate("[Phone] The caller pressed \"It's getting worse\". Ask what changed, record it, and stay on the line.");
+    setNotice(T.worseSent);
+    setTimeout(() => setNotice(null), 4000);
+  }
+
   function toggleMute() {
     const next = !muted;
     setMuted(next);
@@ -535,6 +543,11 @@ export default function Caller() {
             </div>
           )}
 
+          {!unsafe && phase === "live" && (
+            <button className="worse-button" onClick={() => void reportWorse()}>
+              <Icon name="alert" size={16} /> {notice === T.worseSent ? T.worseSent : T.worse}
+            </button>
+          )}
           <div className="caller-controls">
             {!texting && !attached && (
               <button className={`round ${muted ? "on" : ""}`} onClick={toggleMute} aria-label={muted ? "Unmute" : "Mute"}>

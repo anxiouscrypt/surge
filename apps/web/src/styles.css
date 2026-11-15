@@ -3290,3 +3290,15 @@ kbd {
 .unit-chip.police {
   border-color: rgba(120, 160, 255, 0.5);
 }
+.worse-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  border-radius: 12px;
+  background: rgba(245, 174, 103, 0.12);
+  border: 1px solid rgba(245, 174, 103, 0.45);
+  color: #f7c48f;
+  font-weight: 650;
+}

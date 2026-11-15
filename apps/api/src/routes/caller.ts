@@ -78,6 +78,18 @@ caller.use("/:id/*", async (c, next) => {
   await next();
 });
 
+/** Caller pressed "It's getting worse": raise the call in the queue, re-run triage, alert the dispatcher. */
+caller.post("/:id/worse", async (c) => {
+  const inc = store.get(c.req.param("id"));
+  if (!inc) return c.json({ ok: false }, 404);
+  inc.call_state.worse = (inc.call_state.worse ?? 0) + 1;
+  note(inc, "priority", "Caller pressed: it's getting worse");
+  rescore(inc);
+  store.save(inc, ["call_state.worse"]);
+  scheduleLlmTriage(inc);
+  return c.json({ ok: true });
+});
+
 caller.post("/:id/device", async (c) => {
   const body = Device.safeParse(await c.req.json().catch(() => null));
   const inc = store.get(c.req.param("id"));

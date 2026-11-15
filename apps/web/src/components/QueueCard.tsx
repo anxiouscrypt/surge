@@ -110,6 +110,11 @@ export function QueueCard({
       </span>
       <span className="card-bottom">
         <PriorityBadge p={inc.final_priority} collecting={collecting} />
+        {(inc.call_state.worse ?? 0) > 0 && (
+          <span className="card-chip warn" title="The caller pressed 'It's getting worse'">
+            <Icon name="alert" size={11} /> Worse{inc.call_state.worse > 1 ? ` ×${inc.call_state.worse}` : ""}
+          </span>
+        )}
         {inc.triage.llm?.units.length ? (
           <span className="card-chip units" title="Units suggested by AI triage">
             {inc.triage.llm.units.map((u) => UNIT_LABEL[u]).join(" · ")}

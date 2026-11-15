@@ -79,6 +79,8 @@ export const CallState = z.object({
   callback_promised: z.boolean(),
   // Agent says it closed the call itself (sent right before end_call).
   ai_ended_call: z.boolean(),
+  // Times the caller pressed "It's getting worse" on the caller page.
+  worse: z.number().int().nonnegative().default(0),
 });
 
 export const NasaContext = z.object({
@@ -240,7 +242,7 @@ export function emptyIncident(call_id: string, now = new Date()): Incident {
     },
     call_state: {
       stage: "collecting", missing: [], caller_requested_human: false, needs_instructions: false,
-      covert: false, covert_cue: null, callback_promised: false, ai_ended_call: false,
+      covert: false, covert_cue: null, callback_promised: false, ai_ended_call: false, worse: 0,
     },
     nasa_context: null,
     triage: { rules: null, llm: null, classifier: null },
