@@ -136,6 +136,29 @@ export function MapView(props: Props) {
       );
     };
     const onLoad = () => {
+      // Caller overlays: GPS accuracy circles and lines between calls about the same incident.
+      m.addSource("caller-overlays", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      m.addLayer({
+        id: "gps-accuracy",
+        type: "fill",
+        source: "caller-overlays",
+        filter: ["==", ["get", "kind"], "accuracy"],
+        paint: { "fill-color": ["get", "color"], "fill-opacity": 0.14 },
+      });
+      m.addLayer({
+        id: "gps-accuracy-edge",
+        type: "line",
+        source: "caller-overlays",
+        filter: ["==", ["get", "kind"], "accuracy"],
+        paint: { "line-color": ["get", "color"], "line-opacity": 0.55, "line-width": 1 },
+      });
+      m.addLayer({
+        id: "group-links",
+        type: "line",
+        source: "caller-overlays",
+        filter: ["==", ["get", "kind"], "group"],
+        paint: { "line-color": "#f5ae67", "line-width": 2, "line-dasharray": [2, 2], "line-opacity": 0.85 },
+      });
       publishBounds();
       mapLoaded.current = true;
       setReady(true);
@@ -197,7 +220,7 @@ export function MapView(props: Props) {
       }
       marker.setLngLat([lng, lat]);
       const node = marker.getElement();
-      node.className = `caller-pin${inc.status === "ai_on_call" && inc.call_state.stage !== "ended" ? " is-live" : ""}${inc.location.geocode_confidence !== "high" ? " is-approx" : ""}${inc.call_id === props.selected ? " is-selected" : ""}`;
+      node.className = `caller-pin${inc.status === "ai_on_call" && inc.call_state.stage !== "ended" ? " is-live" : ""}${inc.location.source !== "gps" && inc.location.geocode_confidence !== "high" ? " is-approx" : ""}${inc.location.source === "gps" ? " is-gps" : ""}${inc.call_id === props.selected ? " is-selected" : ""}`;
       node.style.setProperty("--priority", PRIORITY_COLOR[inc.final_priority]);
       node.textContent = `P${inc.final_priority}`;
       const label = `P${inc.final_priority}: ${inc.incident.type ?? "Collecting details"}, ${inc.location.address ?? "approximate location"}${inc.location.geocode_confidence !== "high" ? ", approximate" : ""}`;
@@ -221,6 +244,8 @@ export function MapView(props: Props) {
         });
       }
     }
+    const overlays = m.getSource("caller-overlays") as maplibregl.GeoJSONSource | undefined;
+    overlays?.setData(callerOverlays(props.incidents));
     for (const [id, marker] of markers.current)
       if (!live.has(id)) {
         marker.remove();
@@ -497,4 +522,38 @@ function mapPadding(panelOpen: boolean) {
     left: width < 1100 ? 320 : 370,
     right: panelOpen && width > 1190 ? 410 : 80,
   };
+}
+
+/** GeoJSON for GPS accuracy circles and same-incident links. */
+function callerOverlays(incidents: Incident[]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  const byId = new Map(incidents.map((i) => [i.call_id, i]));
+  for (const inc of incidents) {
+    const gps = inc.location.gps;
+    if (gps && inc.location.source === "gps" && gps.accuracy_m >= 5) {
+      const ring: [number, number][] = [];
+      const r = Math.min(gps.accuracy_m, 2000);
+      for (let k = 0; k <= 48; k++) {
+        const a = (k / 48) * 2 * Math.PI;
+        ring.push([
+          gps.lng + ((r * Math.cos(a)) / (111320 * Math.cos((gps.lat * Math.PI) / 180))),
+          gps.lat + (r * Math.sin(a)) / 110540,
+        ]);
+      }
+      features.push({
+        type: "Feature",
+        properties: { kind: "accuracy", color: PRIORITY_COLOR[inc.final_priority] },
+        geometry: { type: "Polygon", coordinates: [ring] },
+      });
+    }
+    if (inc.group && inc.group.id === inc.call_id) {
+      const pts = inc.group.call_ids
+        .map((id) => byId.get(id))
+        .filter((x): x is Incident => !!x && x.location.lat != null && x.location.lng != null)
+        .map((x) => [x.location.lng!, x.location.lat!]);
+      for (const p of pts.slice(1))
+        features.push({ type: "Feature", properties: { kind: "group" }, geometry: { type: "LineString", coordinates: [pts[0], p] } });
+    }
+  }
+  return { type: "FeatureCollection", features };
 }

@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import type { Incident } from "@surge/shared";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
 import { store, note } from "../store/memory.js";
 import { bindTicket, callForTicket, issueTicket } from "../caller/tickets.js";
@@ -89,7 +90,7 @@ function lowBattery(inc: NonNullable<ReturnType<typeof store.get>>) {
     note(inc, "system", `Caller's phone battery is at ${Math.round(b * 100)}%: the call may drop`);
 }
 
-const Fix = z.object({
+export const Fix = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   accuracy_m: z.number().min(0).max(100000),
@@ -101,7 +102,12 @@ caller.post("/:id/location", async (c) => {
   const body = Fix.safeParse(await c.req.json().catch(() => null));
   const inc = store.get(c.req.param("id"));
   if (!body.success || !inc) return c.json({ ok: false }, 400);
-  const fix = body.data;
+  await applyFix(inc, body.data);
+  return c.json({ ok: true, address: inc.location.gps_address, accuracy_m: inc.location.gps!.accuracy_m, missing: inc.call_state.missing });
+});
+
+/** Apply one GPS fix from the caller's phone. */
+export async function applyFix(inc: Incident, fix: z.infer<typeof Fix>) {
   const prev = inc.location.gps;
   inc.location.gps = { lat: fix.lat, lng: fix.lng, accuracy_m: Math.round(fix.accuracy_m), heading: fix.heading ?? null, speed_mps: fix.speed_mps ?? null, at: new Date().toISOString() };
   const moved = prev ? haversineKm(prev, fix) : Infinity;
@@ -109,8 +115,7 @@ caller.post("/:id/location", async (c) => {
   // Use the phone's position for the pin, unless the caller reported an emergency somewhere else.
   const pin = inc.location.lat != null && inc.location.lng != null ? { lat: inc.location.lat, lng: inc.location.lng } : null;
   const reportedElsewhere = inc.location.source === "spoken" && pin && haversineKm(pin, fix) > 0.5;
-  const usable = fix.accuracy_m <= 500;
-  if (usable && !reportedElsewhere) {
+  if (fix.accuracy_m <= 500 && !reportedElsewhere) {
     inc.location.lat = fix.lat;
     inc.location.lng = fix.lng;
     inc.location.source = "gps";
@@ -126,8 +131,7 @@ caller.post("/:id/location", async (c) => {
     rescore(inc);
     store.save(inc, ["location.gps"]);
   }
-  return c.json({ ok: true, address: inc.location.gps_address, accuracy_m: inc.location.gps.accuracy_m, missing: inc.call_state.missing });
-});
+}
 
 caller.post("/:id/transcript", async (c) => {
   const body = z.object({ role: z.enum(["agent", "caller"]), text: z.string().min(1).max(2000) }).safeParse(await c.req.json().catch(() => null));

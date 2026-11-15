@@ -8,12 +8,21 @@ export function StatusBar({
   connection,
   now,
   demo,
+  muted,
+  onMute,
+  onTools,
 }: {
   incidents: Incident[];
   connection: Connection;
   now: number;
   demo: boolean;
+  muted: boolean;
+  onMute: () => void;
+  onTools: () => void;
 }) {
+  const p1 = waitingP1(incidents);
+  const closedByAi = incidents.filter((i) => i.call_state.callback_promised && i.call_state.stage === "ended").length;
+  const onApp = incidents.filter((i) => i.device?.online).length;
   const waiting = incidents.filter(
     (i) => i.status === "ai_on_call" || i.status === "waiting",
   );
@@ -42,13 +51,32 @@ export function StatusBar({
           <span className="metric-dot" /> <b>{String(ai).padStart(2, "0")}</b>
           <span>AI on call</span>
         </div>
+        <div className={p1 ? "metric-urgent" : ""}>
+          <b>{String(p1).padStart(2, "0")}</b>
+          <span>P1 waiting</span>
+        </div>
         <div>
           <Icon name="clock" size={14} />
           <b>{oldest ? formatWait(oldest, now) : "0:00"}</b>
           <span>Longest wait</span>
         </div>
+        <div className="metric-secondary">
+          <b>{String(closedByAi).padStart(2, "0")}</b>
+          <span>Closed by AI</span>
+        </div>
+        <div className="metric-secondary">
+          <Icon name="target" size={14} />
+          <b>{String(onApp).padStart(2, "0")}</b>
+          <span>Live GPS</span>
+        </div>
       </div>
       <div className="header-end">
+        <button className="header-button" onClick={onMute} aria-pressed={muted} title={muted ? "Turn P1 alerts on" : "Mute P1 alerts"}>
+          <Icon name={muted ? "mute" : "volume"} size={15} />
+        </button>
+        <button className="header-button qr-button" onClick={onTools}>
+          <Icon name="phone" size={14} /> Call from phone
+        </button>
         <span
           className={`connection ${demo ? "demo" : connection}`}
           role="status"
@@ -71,4 +99,8 @@ export function StatusBar({
       </div>
     </header>
   );
+}
+
+function waitingP1(list: Incident[]) {
+  return list.filter((i) => i.final_priority === 1 && (i.status === "ai_on_call" || i.status === "waiting")).length;
 }

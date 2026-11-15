@@ -4,10 +4,27 @@ import { WS_URL } from "./api";
 import { mockIncidents, mockTranscripts } from "./mock";
 
 export type TranscriptLine = {
-  role: "agent" | "caller";
+  role: "agent" | "caller" | "dispatcher";
   text: string;
   at: string;
+  /** English translation for non-English calls. */
+  en?: string;
 };
+export type RtcMessage = { call_id: string; data: unknown };
+
+// One dashboard socket at a time; the takeover controller uses it for WebRTC signaling and chat.
+let liveSocket: WebSocket | null = null;
+const rtcListeners = new Set<(m: RtcMessage) => void>();
+export function sendOnFeed(msg: unknown): boolean {
+  if (liveSocket?.readyState !== WebSocket.OPEN) return false;
+  liveSocket.send(JSON.stringify(msg));
+  return true;
+}
+export function onRtc(fn: (m: RtcMessage) => void) {
+  rtcListeners.add(fn);
+  return () => void rtcListeners.delete(fn);
+}
+const ROLES = ["agent", "caller", "dispatcher"];
 export type Connection = "connecting" | "live" | "reconnecting" | "offline";
 const byId = (list: Incident[]) =>
   Object.fromEntries(list.map((i) => [i.call_id, i]));
@@ -36,6 +53,7 @@ export function useIncidents(demo: boolean) {
       let receivedSnapshot = false;
       ws = new WebSocket(WS_URL);
       const socket = ws;
+      liveSocket = socket;
       snapshotTimer = setTimeout(() => socket.close(), 12000);
       socket.onclose = () => {
         clearTimeout(snapshotTimer);
@@ -59,6 +77,8 @@ export function useIncidents(demo: boolean) {
             attempts = 0;
             clearTimeout(snapshotTimer);
             setIncidents(byId(parsed.data));
+            if (e.transcripts && typeof e.transcripts === "object")
+              setTranscripts(e.transcripts);
             setConnection("live");
             setLastUpdate(Date.now());
             return;
@@ -74,7 +94,7 @@ export function useIncidents(demo: boolean) {
           } else if (
             e.type === "call.transcript" &&
             typeof e.call_id === "string" &&
-            (e.role === "agent" || e.role === "caller") &&
+            ROLES.includes(e.role) &&
             typeof e.text === "string" &&
             typeof e.at === "string"
           ) {
@@ -82,9 +102,16 @@ export function useIncidents(demo: boolean) {
               ...cur,
               [e.call_id]: [
                 ...(cur[e.call_id] ?? []),
-                { role: e.role, text: e.text, at: e.at },
+                {
+                  role: e.role,
+                  text: e.text,
+                  at: e.at,
+                  ...(typeof e.en === "string" ? { en: e.en } : {}),
+                },
               ].slice(-300),
             }));
+          } else if (e.type === "rtc" && typeof e.call_id === "string") {
+            for (const fn of rtcListeners) fn({ call_id: e.call_id, data: e.data });
           } else if (e.type === "call.ended" && typeof e.call_id === "string") {
             setIncidents((cur) => {
               const inc = cur[e.call_id];

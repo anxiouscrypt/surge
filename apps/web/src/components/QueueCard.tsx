@@ -9,18 +9,20 @@ export function QueueCard({
   selected,
   onClick,
   now,
+  flash = false,
 }: {
   inc: Incident;
   selected: boolean;
   onClick: () => void;
   now: number;
+  flash?: boolean;
 }) {
   const collecting = !inc.incident.type && inc.final_priority === 4;
   const active =
     inc.status === "ai_on_call" && inc.call_state.stage !== "ended";
   return (
     <button
-      className={`call-card priority-${inc.final_priority}${inc.call_state.covert ? " covert" : ""}${selected ? " selected" : ""}`}
+      className={`call-card priority-${inc.final_priority}${inc.call_state.covert ? " covert" : ""}${selected ? " selected" : ""}${flash ? " flash" : ""}`}
       onClick={onClick}
       aria-pressed={selected}
     >
@@ -90,16 +92,43 @@ export function QueueCard({
         <Icon name="pin" size={13} />
         <span>
           {inc.location.address ??
+            (inc.location.gps_address ? `Near ${inc.location.gps_address}` : null) ??
             inc.location.spoken ??
             "Location not confirmed"}
         </span>
         {inc.location.lat != null &&
+          inc.location.source !== "gps" &&
           inc.location.geocode_confidence !== "high" && (
             <span className="approx-label">approx.</span>
           )}
       </span>
       <span className="card-bottom">
         <PriorityBadge p={inc.final_priority} collecting={collecting} />
+        {inc.group && (
+          <span className="card-chip group" title="Calls close together about the same kind of emergency">
+            <Icon name="users" size={11} /> {inc.group.size} callers
+          </span>
+        )}
+        {inc.location.source === "gps" && (
+          <span className={`card-chip gps${inc.device?.online ? " live" : ""}`}>
+            <Icon name="target" size={11} /> GPS
+          </span>
+        )}
+        {inc.channel === "app_text" && (
+          <span className="card-chip">
+            <Icon name="message" size={11} /> {inc.call_state.covert ? "Silent" : "Text"}
+          </span>
+        )}
+        {inc.media.length > 0 && (
+          <span className="card-chip">
+            <Icon name="camera" size={11} /> {inc.media.length}
+          </span>
+        )}
+        {inc.device?.battery != null && inc.device.battery <= 0.15 && !inc.device.charging && (
+          <span className="card-chip warn">
+            <Icon name="battery" size={11} /> {Math.round(inc.device.battery * 100)}%
+          </span>
+        )}
         {inc.caller.language && (
           <span className="language">{inc.caller.language.toUpperCase()}</span>
         )}

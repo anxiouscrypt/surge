@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { Incident } from "@surge/shared";
 import { config } from "../config.js";
 import { haversineKm } from "../hazards/firms.js";
+import { overpass } from "./overpass.js";
 
 type Place = { name: string; lat: number; lng: number; kind: "fire_station" | "hospital" };
 const dataDir = fileURLToPath(new URL("../../data/", import.meta.url));
@@ -20,13 +21,8 @@ export async function loadPlaces() {
     const [w, s, e, n] = config.dispatchBbox;
     const box = `${s},${w},${n},${e}`;
     const q = `[out:json][timeout:25];(nwr["amenity"="fire_station"](${box});nwr["amenity"="hospital"](${box}););out center tags;`;
-    const res = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: new URLSearchParams({ data: q }),
-      headers: { "User-Agent": "Surge-hackathon/0.1" },
-      signal: AbortSignal.timeout(30000),
-    });
-    const json = (await res.json()) as { elements: any[] };
+    const json = await overpass(q, 30000);
+    if (!json) throw new Error("all Overpass mirrors failed");
     places = json.elements
       .map((el) => ({
         name: (el.tags?.name as string | undefined)?.replace(/\u00a0/g, " ") ?? (el.tags?.amenity === "hospital" ? "Hospital" : "Fire station"),

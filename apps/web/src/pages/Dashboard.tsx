@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTakeover } from "../lib/takeover";
+import { alertsMuted, chime, setAlertsMuted } from "../lib/alert";
+import { DemoTools } from "../components/DemoTools";
 import { MapView, type MapRequest } from "../components/MapView";
 import { HOME } from "../lib/presentation";
 import { QueueCard } from "../components/QueueCard";
@@ -29,6 +32,12 @@ export default function Dashboard() {
     [],
   );
   const nasa = useNasa(bounds);
+  const takeover = useTakeover();
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [muted, setMuted] = useState(alertsMuted);
+  const [toasts, setToasts] = useState<{ id: string; callId: string; text: string }[]>([]);
+  const [flash, setFlash] = useState<Set<string>>(new Set());
+  const seenPriority = useRef<Map<string, number> | null>(null);
   const [now, setNow] = useState(Date.now());
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"waiting" | "taken">("waiting");
@@ -72,6 +81,31 @@ export default function Dashboard() {
     [incidents, filter, query, now],
   );
   const current = incidents.find((i) => i.call_id === selected) ?? null;
+  // New P1 (a new call, or one that just became P1): chime, flash the card, show a toast.
+  useEffect(() => {
+    if (!demo && connection !== "live") return;
+    const prev = seenPriority.current;
+    const next = new Map(incidents.map((i) => [i.call_id, i.final_priority]));
+    seenPriority.current = next;
+    if (!prev) return; // first load: no alerts for calls already on screen
+    const fresh = incidents.filter(
+      (i) => i.final_priority === 1 && prev.get(i.call_id) !== 1 && (i.status === "ai_on_call" || i.status === "waiting"),
+    );
+    if (!fresh.length) return;
+    chime();
+    setFlash((cur) => new Set([...cur, ...fresh.map((i) => i.call_id)]));
+    setToasts((cur) => [
+      ...cur.slice(-2),
+      ...fresh.map((i) => ({
+        id: `${i.call_id}-${Date.now()}`,
+        callId: i.call_id,
+        text: `${p1Reason(i)}${i.location.address || i.location.gps_address ? ` · ${i.location.address ?? i.location.gps_address}` : ""}`,
+      })),
+    ]);
+    const ids = fresh.map((i) => i.call_id);
+    setTimeout(() => setFlash((cur) => new Set([...cur].filter((x) => !ids.includes(x)))), 6000);
+    setTimeout(() => setToasts((cur) => cur.filter((t) => !ids.includes(t.callId))), 9000);
+  }, [incidents, connection, demo]);
   const onSelect = useCallback((id: string) => {
     setSelected(id);
     setSelectedEvent(null);
@@ -152,7 +186,41 @@ export default function Dashboard() {
         connection={connection}
         now={now}
         demo={demo}
+        muted={muted}
+        onMute={() => {
+          setAlertsMuted(!muted);
+          setMuted(!muted);
+        }}
+        onTools={() => setToolsOpen(true)}
       />
+      {toolsOpen && <DemoTools demo={demo} onClose={() => setToolsOpen(false)} />}
+      <div className="toasts" aria-live="assertive">
+        {toasts.map((t) => (
+          <button
+            key={t.id}
+            className="toast p1"
+            onClick={() => {
+              onSelect(t.callId);
+              setToasts((cur) => cur.filter((x) => x.id !== t.id));
+            }}
+          >
+            <span className="toast-badge">P1</span>
+            <span>
+              <b>New immediate call</b>
+              <small>{t.text}</small>
+            </span>
+          </button>
+        ))}
+        {takeover.live && takeover.live.callId !== selected && (
+          <button className="toast live" onClick={() => onSelect(takeover.live!.callId)}>
+            <span className="live-dot" />
+            <span>
+              <b>{takeover.live.text ? "Texting with a caller" : "On a live call"}</b>
+              <small>Open the call</small>
+            </span>
+          </button>
+        )}
+      </div>
       <main className="workspace">
         <MapView
           incidents={incidents}
@@ -248,6 +316,7 @@ export default function Dashboard() {
                       inc={inc}
                       now={now}
                       selected={inc.call_id === selected}
+                      flash={flash.has(inc.call_id)}
                       onClick={() => onSelect(inc.call_id)}
                     />
                   ))
@@ -376,6 +445,9 @@ export default function Dashboard() {
             connected={connection === "live"}
             onDemoAction={updateDemo}
             onClose={() => setSelected(null)}
+            takeover={takeover}
+            others={incidents}
+            onSelect={onSelect}
           />
         )}
         <div className="map-legend glass" aria-label="Map legend">
@@ -421,4 +493,12 @@ export default function Dashboard() {
       </span>
     </div>
   );
+}
+
+/** The reason that made the call P1 (rules first, then the AI), for the alert toast. */
+function p1Reason(i: import("@surge/shared").Incident) {
+  const { rules, llm } = i.triage;
+  if (rules?.priority === 1) return rules.reasons[0]?.text ?? "Immediate threat";
+  if (llm?.priority === 1) return llm.reasons[0]?.text ?? llm.summary;
+  return i.final_reasons[0]?.text ?? "Immediate threat";
 }

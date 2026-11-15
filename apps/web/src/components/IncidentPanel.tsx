@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Incident } from "@surge/shared";
-import { post, request, type Dispatcher, type TakeResult } from "../lib/api";
+import { API_URL, post, request, type Dispatcher, type TakeResult } from "../lib/api";
+import type { Takeover } from "../lib/takeover";
 import { formatWait, type TranscriptLine } from "../lib/socket";
 import { PriorityBadge } from "./PriorityBadge";
 import { Icon } from "./Icon";
@@ -26,6 +27,9 @@ export function IncidentPanel({
   demo,
   connected,
   onDemoAction,
+  takeover,
+  others,
+  onSelect,
 }: {
   inc: Incident;
   onClose: () => void;
@@ -34,8 +38,15 @@ export function IncidentPanel({
   demo: boolean;
   connected: boolean;
   onDemoAction: (id: string, status: Incident["status"]) => void;
+  takeover: Takeover;
+  others: Incident[];
+  onSelect: (id: string) => void;
 }) {
-  const [tab, setTab] = useState<"overview" | "transcript">("overview");
+  const [tab, setTab] = useState<"overview" | "timeline" | "transcript">("overview");
+  const [reply, setReply] = useState("");
+  const live = takeover.live?.callId === inc.call_id ? takeover.live : null;
+  // Caller is on the Surge caller page right now: take over in the browser, no phone needed.
+  const appOnline = !!inc.device?.online && inc.channel !== "phone" && inc.channel !== "unknown";
   const [dispatchers, setDispatchers] = useState<Dispatcher[]>([]);
   const [dispatcherId, setDispatcherId] = useState("");
   const [dispatcherError, setDispatcherError] = useState<string | null>(null);
@@ -60,7 +71,7 @@ export function IncidentPanel({
         if (!Array.isArray(list))
           throw new Error("Dispatcher list unavailable.");
         setDispatchers(list);
-        setDispatcherId(list.find((d) => d.phone)?.id ?? "");
+        setDispatcherId(list.find((d) => d.phone)?.id ?? list[0]?.id ?? "");
       })
       .catch(() => {
         if (!controller.signal.aborted)
@@ -85,7 +96,10 @@ export function IncidentPanel({
     inc.call_state.stage !== "ended" &&
     inc.call_state.stage !== "transferred" &&
     inc.status !== "dispatched";
-  const canTake = liveCall && (demo || (connected && !!destination?.phone));
+  const canTake =
+    liveCall &&
+    !live &&
+    (demo || (connected && !!destination && (!!destination.phone || appOnline)));
   const take = useCallback(async () => {
     if (inFlight.current || !canTake) return;
     inFlight.current = true;
@@ -96,7 +110,9 @@ export function IncidentPanel({
         onDemoAction(inc.call_id, "taken");
         setResult({ ok: true, transferred: true, error: null, callback: null });
       } else {
-        const response = await post<TakeResult>(
+        const text = inc.channel === "app_text";
+        if (appOnline) takeover.prepare(inc.call_id, text);
+        const response = await post<TakeResult & { web?: boolean }>(
           `/incidents/${encodeURIComponent(inc.call_id)}/take`,
           { dispatcher_id: dispatcherId },
         );
@@ -109,6 +125,8 @@ export function IncidentPanel({
           );
         if (!response.ok)
           throw new Error(response.error ?? "Could not take over this call.");
+        if (response.web) takeover.started(inc.call_id, text);
+        else if (appOnline) takeover.cancel();
         if (mounted.current) setResult(response);
       }
     } catch (e) {
@@ -120,7 +138,7 @@ export function IncidentPanel({
       inFlight.current = false;
       if (mounted.current) setBusy(false);
     }
-  }, [canTake, demo, onDemoAction, inc.call_id, dispatcherId]);
+  }, [canTake, demo, onDemoAction, inc.call_id, inc.channel, dispatcherId, appOnline, takeover]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -211,10 +229,11 @@ export function IncidentPanel({
         <p>
           <Icon name="pin" size={14} />
           {inc.location.address ??
+            (inc.location.gps_address ? `Near ${inc.location.gps_address}` : null) ??
             inc.location.spoken ??
             "Location not confirmed"}
         </p>
-        {inc.location.geocode_confidence !== "high" && (
+        {inc.location.source !== "gps" && inc.location.geocode_confidence !== "high" && (
           <span className="location-confidence">
             {inc.location.lat == null
               ? "Not yet placed on map"
@@ -243,14 +262,14 @@ export function IncidentPanel({
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
             return;
           event.preventDefault();
+          const order = ["overview", "timeline", "transcript"] as const;
+          const i = order.indexOf(tab);
           const next =
             event.key === "Home"
               ? "overview"
               : event.key === "End"
                 ? "transcript"
-                : tab === "overview"
-                  ? "transcript"
-                  : "overview";
+                : order[(i + (event.key === "ArrowRight" ? 1 : 2)) % 3];
           setTab(next);
           document.getElementById(`${next}-tab`)?.focus();
         }}
@@ -264,6 +283,16 @@ export function IncidentPanel({
           onClick={() => setTab("overview")}
         >
           Overview
+        </button>
+        <button
+          role="tab"
+          id="timeline-tab"
+          tabIndex={tab === "timeline" ? 0 : -1}
+          aria-selected={tab === "timeline"}
+          aria-controls="timeline-content"
+          onClick={() => setTab("timeline")}
+        >
+          Timeline <span>{inc.timeline.length}</span>
         </button>
         <button
           role="tab"
@@ -298,6 +327,86 @@ export function IncidentPanel({
                 </small>
               )}
             </section>
+            {inc.group && (
+              <section className="detail-section group-section">
+                <span className="section-eyebrow">
+                  <Icon name="users" size={13} /> LIKELY SAME INCIDENT · {inc.group.size} CALLERS
+                </span>
+                <div className="group-calls">
+                  {inc.group.call_ids
+                    .filter((id) => id !== inc.call_id)
+                    .map((id) => {
+                      const o = others.find((x) => x.call_id === id);
+                      return (
+                        <button key={id} onClick={() => onSelect(id)}>
+                          <span className={`mini-badge p${o?.final_priority ?? 4}`}>P{o?.final_priority ?? "?"}</span>
+                          <span>
+                            {o?.triage.llm?.summary ?? o?.incident.description ?? `Call #${id.slice(-6)}`}
+                          </span>
+                          <Icon name="chevron" size={13} />
+                        </button>
+                      );
+                    })}
+                </div>
+              </section>
+            )}
+            {(inc.device || inc.location.gps) && (
+              <section className="detail-section device-section">
+                <span className="section-eyebrow">CALLER'S PHONE</span>
+                <div className="device-grid">
+                  <span className={`device-chip ${inc.device?.online ? "on" : ""}`}>
+                    <Icon name={inc.channel === "app_text" ? "message" : "phone"} size={13} />
+                    {inc.channel === "app_text"
+                      ? inc.call_state.covert
+                        ? "Silent text"
+                        : "Text"
+                      : inc.channel === "app_voice"
+                        ? "Caller app"
+                        : "Phone"}
+                    {inc.device && (inc.device.online ? " · online" : " · offline")}
+                  </span>
+                  {inc.device?.battery != null && (
+                    <span className={`device-chip ${inc.device.battery <= 0.15 && !inc.device.charging ? "warn" : ""}`}>
+                      <Icon name="battery" size={13} />
+                      {Math.round(inc.device.battery * 100)}%{inc.device.charging ? " · charging" : ""}
+                    </span>
+                  )}
+                  {inc.device?.platform && <span className="device-chip">{inc.device.platform}</span>}
+                </div>
+                {inc.location.gps && (
+                  <p className="gps-line">
+                    <Icon name="target" size={14} />
+                    <span>
+                      <b>GPS ±{inc.location.gps.accuracy_m} m</b>
+                      {inc.location.gps_address ? ` · near ${inc.location.gps_address}` : ""}
+                      <small>
+                        Updated {Math.max(0, Math.round((now - Date.parse(inc.location.gps.at)) / 1000))}s ago
+                        {inc.location.source !== "gps" ? " · pin uses the reported address" : ""}
+                      </small>
+                    </span>
+                  </p>
+                )}
+              </section>
+            )}
+            {inc.media.length > 0 && (
+              <section className="detail-section">
+                <span className="section-eyebrow">
+                  <Icon name="camera" size={13} /> FROM THE CALLER · {inc.media.length}
+                </span>
+                <div className="media-grid">
+                  {inc.media.map((m) => (
+                    <a key={m.id} href={`${API_URL}${m.url}`} target="_blank" rel="noreferrer" className="media-item">
+                      {m.kind === "photo" ? (
+                        <img src={`${API_URL}${m.url}`} alt={m.caption ?? "Photo from the caller"} loading="lazy" />
+                      ) : (
+                        <video src={`${API_URL}${m.url}`} muted playsInline preload="metadata" />
+                      )}
+                      <span>{m.caption ?? (m.kind === "photo" ? "AI is describing the photo…" : "Video")}</span>
+                    </a>
+                  ))}
+                </div>
+              </section>
+            )}
             <section className="detail-section">
               <span className="section-eyebrow">WHY THIS PRIORITY</span>
               <ul className="priority-reasons">
@@ -367,6 +476,25 @@ export function IncidentPanel({
                 )}
               </section>
             )}
+            {inc.nearby && (inc.nearby.fire_station || inc.nearby.hospital) && (
+              <section className="detail-section">
+                <span className="section-eyebrow">NEAREST</span>
+                <div className="nearby">
+                  {inc.nearby.fire_station && (
+                    <span>
+                      <Icon name="fire" size={14} />
+                      {inc.nearby.fire_station.name} <b>{inc.nearby.fire_station.km} km</b>
+                    </span>
+                  )}
+                  {inc.nearby.hospital && (
+                    <span>
+                      <Icon name="hospital" size={14} />
+                      {inc.nearby.hospital.name} <b>{inc.nearby.hospital.km} km</b>
+                    </span>
+                  )}
+                </div>
+              </section>
+            )}
             {inc.call_state.missing.length > 0 && (
               <section className="detail-section">
                 <span className="section-eyebrow">STILL BEING COLLECTED</span>
@@ -379,6 +507,18 @@ export function IncidentPanel({
                 </div>
               </section>
             )}
+          </div>
+        ) : tab === "timeline" ? (
+          <div role="tabpanel" id="timeline-content" aria-labelledby="timeline-tab" className="timeline">
+            {[...inc.timeline].reverse().map((t, i) => (
+              <div className={`timeline-item ${t.kind}`} key={`${t.at}-${i}`}>
+                <time>
+                  {new Date(t.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </time>
+                <span className="timeline-dot" />
+                <p>{t.text}</p>
+              </div>
+            ))}
           </div>
         ) : (
           <div
@@ -400,7 +540,7 @@ export function IncidentPanel({
                 >
                   <div>
                     <strong>
-                      {line.role === "agent" ? "Surge assistant" : "Caller"}
+                      {line.role === "agent" ? "Surge assistant" : line.role === "dispatcher" ? "Dispatcher" : "Caller"}
                     </strong>
                     <time>
                       {new Date(line.at).toLocaleTimeString([], {
@@ -410,6 +550,7 @@ export function IncidentPanel({
                     </time>
                   </div>
                   <p>{line.text}</p>
+                  {line.en && <p className="translation">EN · {line.en}</p>}
                 </div>
               ))
             ) : (
@@ -423,6 +564,55 @@ export function IncidentPanel({
         )}
       </div>
       <footer className="inspector-actions">
+        {live && (
+          <div className={`live-takeover ${live.state}`}>
+            <div className="live-head">
+              <span className="live-dot" />
+              <b>
+                {live.text
+                  ? "Texting with the caller"
+                  : live.state === "connected"
+                    ? "Live with the caller"
+                    : live.state === "connecting"
+                      ? "Connecting audio…"
+                      : live.state === "failed"
+                        ? "Audio could not connect"
+                        : "Call ended"}
+              </b>
+              {live.state === "connected" && (
+                <time>
+                  {Math.floor((now - live.startedAt) / 60000)}:
+                  {String(Math.floor(((now - live.startedAt) / 1000) % 60)).padStart(2, "0")}
+                </time>
+              )}
+            </div>
+            {live.error && <p className="feed-note">{live.error}. Use the callback number or the caller's GPS.</p>}
+            {live.text ? (
+              <form
+                className="dispatcher-chat"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (takeover.chat(reply)) setReply("");
+                }}
+              >
+                <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Type to the caller (yes/no questions)" aria-label="Message to caller" />
+                <button type="submit" disabled={!reply.trim()} aria-label="Send">
+                  <Icon name="send" size={15} />
+                </button>
+              </form>
+            ) : null}
+            <div className="live-buttons">
+              {!live.text && live.state === "connected" && (
+                <button onClick={takeover.toggleMute}>
+                  <Icon name={live.muted ? "mute" : "mic"} size={14} /> {live.muted ? "Unmute" : "Mute"}
+                </button>
+              )}
+              <button className="end" onClick={takeover.end}>
+                End call
+              </button>
+            </div>
+          </div>
+        )}
         {error && (
           <div className="action-message error" role="alert">
             {error}
@@ -433,7 +623,9 @@ export function IncidentPanel({
             className={`action-message ${result.transferred ? "success" : "error"}`}
             role="status"
           >
-            {result.transferred
+            {(result as TakeResult & { web?: boolean }).web
+              ? "Taking over in the browser. The caller's phone is switching to you."
+              : result.transferred
               ? demo
                 ? "Demo handoff complete. No real call was made."
                 : "Call redirect accepted. Confirm the caller is connected on your phone."
@@ -452,7 +644,8 @@ export function IncidentPanel({
         {!demo &&
           inc.status === "taken" &&
           inc.call_state.stage !== "transferred" &&
-          !result && (
+          !result &&
+          !live && (
             <div className="action-message error">
               Call claimed; transfer is not confirmed. Retry or use callback.
             </div>
@@ -472,9 +665,9 @@ export function IncidentPanel({
                 >
                   <option value="">Select dispatcher</option>
                   {dispatchers.map((d) => (
-                    <option key={d.id} value={d.id} disabled={!d.phone}>
+                    <option key={d.id} value={d.id} disabled={!d.phone && !appOnline}>
                       {d.name}
-                      {!d.phone ? " · no phone" : ""}
+                      {appOnline ? " · in browser" : !d.phone ? " · no phone" : ""}
                     </option>
                   ))}
                 </select>
@@ -501,7 +694,7 @@ export function IncidentPanel({
             )}
           </>
         )}
-        {inc.call_state.stage === "transferred" && !result && (
+        {inc.call_state.stage === "transferred" && !result && !live && inc.takeover?.mode !== "web" && (
           <div className="action-message success">
             Call redirected to {inc.taken_by ?? "a dispatcher"}. Confirm
             connection on the receiving phone.
