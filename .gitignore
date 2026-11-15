@@ -10,3 +10,4 @@ __pycache__/
 ml/data/
 ml/models/
 apps/api/data/
+.tools/

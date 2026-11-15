@@ -8,7 +8,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "agent:setup": "pnpm --filter @surge/api agent:setup"
+    "agent:setup": "pnpm --filter @surge/api agent:setup",
+    "demo": "node scripts/demo.mjs"
   },
   "packageManager": "pnpm@10.30.3",
   "pnpm": {
