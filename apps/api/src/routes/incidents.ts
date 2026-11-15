@@ -10,6 +10,22 @@ import { viaTunnel } from "../auth.js";
 
 export const incidents = new Hono();
 
+/** Every call as CSV (after-action report). */
+incidents.get("/export.csv", (c) => {
+  const cols = ["call_id", "received_at", "status", "final_priority", "type", "address", "lat", "lng", "location_source", "summary", "reasons", "covert", "group_size", "language"];
+  const esc = (v: unknown) => {
+    const t = v == null ? "" : String(v);
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const rows = store.all().map((i) =>
+    [i.call_id, i.received_at, i.status, i.final_priority, i.incident.type, i.location.address ?? i.location.gps_address, i.location.lat, i.location.lng, i.location.source, i.triage.llm?.summary ?? i.incident.description, i.final_reasons.map((r) => r.text).join("; "), i.call_state.covert, i.group?.size ?? 1, i.caller.language]
+      .map(esc)
+      .join(","),
+  );
+  c.header("content-disposition", `attachment; filename="surge-calls-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.csv"`);
+  return c.body([cols.join(","), ...rows].join("\n"), 200, { "content-type": "text/csv; charset=utf-8" });
+});
+
 incidents.get("/", (c) => c.json(c.req.query("status") === "all" ? store.all() : store.open()));
 
 incidents.post("/:id/take", async (c) => {

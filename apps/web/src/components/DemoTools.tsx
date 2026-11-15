@@ -1,7 +1,7 @@
 // "Callers" panel: the QR code judges scan to call Surge from their own phone, plus demo controls.
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { post, request } from "../lib/api";
+import { DASHBOARD_KEY, post, request, API_URL } from "../lib/api";
 import { Icon } from "./Icon";
 
 type Config = { public_url: string | null; sms: boolean; phone_number: string | null; voice: boolean; ai_triage: boolean };
@@ -96,6 +96,9 @@ export function DemoTools({ onClose, demo }: { onClose: () => void; demo: boolea
           </div>
         )}
         {message && <p className="feed-note">{message}</p>}
+        <a className="link-button" href={`${API_URL}/incidents/export.csv${DASHBOARD_KEY ? `?key=${encodeURIComponent(DASHBOARD_KEY)}` : ""}`}>
+          Download all calls (CSV)
+        </a>
         <p className="caller-fine">Hackathon demo. Not connected to real 911.</p>
       </section>
     </div>

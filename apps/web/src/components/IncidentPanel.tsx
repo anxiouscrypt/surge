@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Incident } from "@surge/shared";
 import { mediaUrl, post, request, type Dispatcher, type TakeResult } from "../lib/api";
 import type { Takeover } from "../lib/takeover";
+import { cadSummary } from "../lib/cad";
 import { formatWait, type TranscriptLine } from "../lib/socket";
 import { PriorityBadge } from "./PriorityBadge";
 import { Icon } from "./Icon";
@@ -46,6 +47,7 @@ export function IncidentPanel({
   const [reply, setReply] = useState("");
   const [ask, setAsk] = useState("");
   const [askState, setAskState] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const live = takeover.live?.callId === inc.call_id ? takeover.live : null;
   // Caller is on the Surge caller page right now: take over in the browser, no phone needed.
   const appOnline = !!inc.device?.online && inc.channel !== "phone" && inc.channel !== "unknown";
@@ -772,6 +774,20 @@ export function IncidentPanel({
             onClick={() => void setStatus("closed")}
           >
             Close incident
+          </button>
+          <button
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(cadSummary(inc))
+                .then(() => {
+                  setCopied(true);
+                  setTimeout(() => mounted.current && setCopied(false), 2000);
+                })
+                .catch(() => setError("Could not copy. Select the summary manually."));
+            }}
+            title="Copy a structured summary to paste into CAD"
+          >
+            {copied ? "Copied" : "Copy for CAD"}
           </button>
         </div>
       </footer>
