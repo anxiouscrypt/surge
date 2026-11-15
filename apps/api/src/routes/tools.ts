@@ -13,14 +13,39 @@ tools.use("*", async (c, next) => {
 });
 
 tools.post("/update_incident", async (c) => {
-  const parsed = AgentUpdate.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) {
+  const body = await c.req.json().catch(() => null);
+  console.log("update_incident", JSON.stringify(body));
+  const { data, dropped } = salvage(body);
+  if (!data) {
     // Logged and ignored, never shown. Keep the agent talking.
-    console.warn("update_incident rejected", parsed.error.flatten());
-    return c.json({ ok: false, missing: [], say: null, escalate: false });
+    return c.json({ ok: false, missing: [], say: null, escalate: false, error: "Update not saved. Send the facts again." });
   }
-  return c.json(await handleAgentUpdate(parsed.data));
+  const reply = await handleAgentUpdate(data);
+  return c.json(dropped.length ? { ...reply, not_saved: dropped } : reply);
 });
+
+/** Parse an agent update, dropping only the invalid fields so one bad value never loses the whole update. */
+export function salvage(body: unknown): { data: AgentUpdate | null; dropped: string[] } {
+  const dropped: string[] = [];
+  let input = structuredClone(body);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const parsed = AgentUpdate.safeParse(input);
+    if (parsed.success) return { data: parsed.data, dropped };
+    if (!input || typeof input !== "object") break;
+    for (const issue of parsed.error.issues) {
+      const keys = issue.code === "unrecognized_keys" ? issue.keys.map((k) => [...issue.path, k]) : [issue.path];
+      for (const path of keys) {
+        if (!path.length || path[0] === "call_id") return { data: null, dropped };
+        let parent: any = input;
+        for (const p of path.slice(0, -1)) parent = parent?.[p];
+        if (parent && typeof parent === "object") delete parent[path[path.length - 1]];
+        dropped.push(path.join("."));
+      }
+    }
+    console.warn("update_incident dropped invalid fields", dropped);
+  }
+  return { data: null, dropped };
+}
 
 tools.post("/get_status", async (c) => {
   const { call_id } = (await c.req.json().catch(() => ({}))) as { call_id?: string };

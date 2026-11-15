@@ -1,24 +1,98 @@
 import type { Incident } from "@surge/shared";
 import { PriorityBadge } from "./PriorityBadge";
-import { waitMinutes } from "../lib/socket";
+import { formatWait } from "../lib/socket";
+import { Icon } from "./Icon";
+import { TYPE_ICON } from "../lib/presentation";
 
-export function QueueCard({ inc, selected, onClick, now }: { inc: Incident; selected: boolean; onClick: () => void; now: number }) {
-  const w = waitMinutes(inc, now);
-  const summary = inc.triage.llm?.summary ?? inc.incident.description ?? "Collecting details…";
+export function QueueCard({
+  inc,
+  selected,
+  onClick,
+  now,
+}: {
+  inc: Incident;
+  selected: boolean;
+  onClick: () => void;
+  now: number;
+}) {
+  const collecting = !inc.incident.type && inc.final_priority === 4;
+  const active =
+    inc.status === "ai_on_call" && inc.call_state.stage !== "ended";
   return (
-    <button className={`card p${inc.final_priority} ${selected ? "selected" : ""}`} onClick={onClick}>
-      <div className="card-top">
-        <PriorityBadge p={inc.final_priority} />
-        {inc.status === "ai_on_call" && <span className="ai-live">● AI on call</span>}
-        <span className="wait">{Math.floor(w)}:{String(Math.floor((w % 1) * 60)).padStart(2, "0")}</span>
-      </div>
-      <div className="summary">{summary}</div>
-      <div className="address">{inc.location.address ?? <span className="unknown">Location unknown</span>}</div>
-      <div className="chips">
-        {inc.final_reasons.slice(0, 3).map((r) => (
-          <span key={r.text} className="chip">{r.text}</span>
-        ))}
-      </div>
+    <button
+      className={`call-card priority-${inc.final_priority}${selected ? " selected" : ""}`}
+      onClick={onClick}
+      aria-pressed={selected}
+    >
+      <span className="card-top">
+        <span className="call-number">
+          #{inc.call_id.replace(/^.*_/, "").slice(-6)}
+        </span>
+        <span className="card-call-state">
+          {active ? (
+            <>
+              <span className="tiny-wave">
+                <i />
+                <i />
+                <i />
+              </span>
+              AI on call
+            </>
+          ) : inc.call_state.stage === "ended" ? (
+            "Call ended"
+          ) : inc.status === "taken" ? (
+            inc.call_state.stage === "transferred" ? (
+              "Transferred"
+            ) : (
+              "Claimed"
+            )
+          ) : inc.status === "dispatched" ? (
+            "Dispatched"
+          ) : (
+            "Waiting"
+          )}
+        </span>
+        <span className="wait">{formatWait(inc, now)}</span>
+      </span>
+      <span className="card-title">
+        <span className={`incident-icon p${inc.final_priority}`}>
+          <Icon name={TYPE_ICON[inc.incident.type ?? "other"]} size={17} />
+        </span>
+        <span>
+          {inc.incident.subtype?.replaceAll("_", " ") ??
+            inc.incident.type?.replaceAll("_", " ") ??
+            "Locating caller"}
+        </span>
+        <Icon name="chevron" size={14} />
+      </span>
+      <span className="card-description">
+        {inc.triage.llm?.summary ??
+          inc.incident.description ??
+          "Collecting emergency details…"}
+      </span>
+      <span
+        className={`card-location${inc.location.lat == null ? " location-pending" : ""}`}
+      >
+        <Icon name="pin" size={13} />
+        <span>
+          {inc.location.address ??
+            inc.location.spoken ??
+            "Location not confirmed"}
+        </span>
+        {inc.location.lat != null &&
+          inc.location.geocode_confidence !== "high" && (
+            <span className="approx-label">approx.</span>
+          )}
+      </span>
+      <span className="card-bottom">
+        <PriorityBadge p={inc.final_priority} collecting={collecting} />
+        {inc.caller.language && (
+          <span className="language">{inc.caller.language.toUpperCase()}</span>
+        )}
+      </span>
+      {inc.final_reasons[0] && (
+        <span className="card-reason">{inc.final_reasons[0].text}</span>
+      )}
     </button>
   );
 }

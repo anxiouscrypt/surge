@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { emit, nextSeq, store } from "../store/memory.js";
+import { triageAtCallEnd } from "../ai/gemini.js";
 
 export const webhooks = new Hono();
 
@@ -13,6 +14,9 @@ webhooks.post("/elevenlabs/post-call", async (c) => {
     inc.call_state.stage = "ended";
     store.save(inc, ["call_state.stage"]);
   }
-  if (call_id) emit({ type: "call.ended", call_id, seq: nextSeq() });
+  if (call_id) {
+    emit({ type: "call.ended", call_id, seq: nextSeq() });
+    if (inc) triageAtCallEnd(call_id);
+  }
   return c.json({ ok: true });
 });

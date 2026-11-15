@@ -1,55 +1,410 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { MapView } from "../components/MapView";
+import { MapView, type MapRequest } from "../components/MapView";
+import { HOME } from "../lib/presentation";
 import { QueueCard } from "../components/QueueCard";
 import { IncidentPanel } from "../components/IncidentPanel";
 import { StatusBar } from "../components/StatusBar";
+import { NasaControls } from "../components/NasaControls";
+import { Icon } from "../components/Icon";
 import { sortQueue, useIncidents } from "../lib/socket";
-import { post } from "../lib/api";
+import { ageLabel, useNasa, type Layers, type NaturalEvent } from "../lib/nasa";
 
+const NO_LINES: never[] = [];
 export default function Dashboard() {
-  const { incidents, connected } = useIncidents();
+  const [demo] = useState(
+    () => new URLSearchParams(window.location.search).get("demo") === "1",
+  );
+  const { incidents, transcripts, connection, lastUpdate, updateDemo } =
+    useIncidents(demo);
+  const nasa = useNasa();
   const [now, setNow] = useState(Date.now());
   const [selected, setSelected] = useState<string | null>(null);
-  const queue = useMemo(() => sortQueue(incidents, now), [incidents, now]);
-  const current = queue.find((i) => i.call_id === selected) ?? null;
-  const onSelect = useCallback((id: string) => setSelected(id), []);
-
+  const [filter, setFilter] = useState<"waiting" | "taken">("waiting");
+  const [search, setSearch] = useState("");
+  const [queueOpen, setQueueOpen] = useState(true);
+  const [follow, setFollow] = useState(false);
+  const [layers, setLayers] = useState<Layers>({
+    fires: true,
+    events: true,
+    imagery: false,
+  });
+  const [chosenDate, setChosenDate] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState<NaturalEvent | null>(null);
+  const [region, setRegion] = useState("Washtenaw County, MI");
+  const [mapRequest, setMapRequest] = useState<MapRequest | null>(null);
+  const waiting = incidents.filter(
+    (i) => i.status === "ai_on_call" || i.status === "waiting",
+  );
+  const taken = incidents.filter(
+    (i) => i.status === "taken" || i.status === "dispatched",
+  );
+  const source = filter === "waiting" ? waiting : taken;
+  const query = search.toLowerCase().trim();
+  const queue = useMemo(
+    () =>
+      sortQueue(
+        source.filter(
+          (i) =>
+            !query ||
+            [
+              i.call_id,
+              i.location.address,
+              i.incident.type,
+              i.incident.description,
+              i.triage.llm?.summary,
+              i.caller.language,
+            ].some((value) => value?.toLowerCase().includes(query)),
+        ),
+        now,
+      ),
+    [incidents, filter, query, now],
+  );
+  const current = incidents.find((i) => i.call_id === selected) ?? null;
+  const onSelect = useCallback((id: string) => {
+    setSelected(id);
+    setSelectedEvent(null);
+  }, []);
+  const yesterday = new Date(now - 86400000).toISOString().slice(0, 10);
+  const imageryDate =
+    chosenDate ||
+    (nasa.imagery.data
+      ? nasa.imagery.data < yesterday
+        ? nasa.imagery.data
+        : yesterday
+      : "");
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  // Keyboard: J/K move, Enter open, T take over, Esc close.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        (e.target as HTMLElement).closest(
+          "input, select, textarea, [contenteditable=true]",
+        )
+      )
+        return;
+      const key = e.key.toLowerCase();
       const idx = queue.findIndex((i) => i.call_id === selected);
-      if (e.key === "j") setSelected(queue[Math.min(queue.length - 1, idx + 1)]?.call_id ?? null);
-      if (e.key === "k") setSelected(queue[Math.max(0, idx - 1)]?.call_id ?? null);
-      if (e.key === "Enter" && !selected && queue[0]) setSelected(queue[0].call_id);
-      if (e.key === "Escape") setSelected(null);
-      if (e.key === "t" && selected) void post(`/incidents/${selected}/take`, { dispatcher_id: "d1" });
+      if (key === "j" || key === "k") {
+        e.preventDefault();
+        const next =
+          key === "j"
+            ? Math.min(queue.length - 1, idx + 1)
+            : idx < 0
+              ? 0
+              : Math.max(0, idx - 1);
+        if (queue[next]) onSelect(queue[next].call_id);
+      }
+      if (
+        e.key === "Enter" &&
+        !selected &&
+        queue[0] &&
+        e.target === document.body
+      )
+        onSelect(queue[0].call_id);
+      if (e.key === "Escape") {
+        setSelected(null);
+        setSelectedEvent(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [queue, selected]);
-
+  }, [queue, selected, onSelect]);
+  const home = () => {
+    setSelected(null);
+    setSelectedEvent(null);
+    setRegion("Washtenaw County, MI");
+    setMapRequest({ key: Date.now(), center: HOME, zoom: 12.2 });
+  };
+  const showEvent = (event: NaturalEvent) => {
+    setSelected(null);
+    setSelectedEvent(event);
+    setRegion(event.title);
+    setLayers((previous) => ({ ...previous, events: true }));
+    setMapRequest({ key: Date.now(), center: event.center, zoom: 8 });
+  };
+  const unlocated = waiting.filter(
+    (i) => i.location.lat == null || i.location.lng == null,
+  ).length;
+  const urgent = waiting.filter((i) => i.final_priority === 1).length;
   return (
-    <div className="app">
-      <StatusBar incidents={incidents} connected={connected} now={now} />
-      <main className="layout">
-        <MapView incidents={queue} onSelect={onSelect} />
-        <aside className="queue">
-          {current ? (
-            <IncidentPanel inc={current} onClose={() => setSelected(null)} />
-          ) : queue.length ? (
-            queue.map((inc) => (
-              <QueueCard key={inc.call_id} inc={inc} now={now} selected={inc.call_id === selected} onClick={() => setSelected(inc.call_id)} />
-            ))
-          ) : (
-            <p className="empty">No waiting calls</p>
+    <div
+      className={`app${demo ? " demo-mode" : ""}${current ? " has-inspector" : ""}`}
+    >
+      <StatusBar
+        incidents={incidents}
+        connection={connection}
+        now={now}
+        demo={demo}
+      />
+      <main className="workspace">
+        <MapView
+          incidents={incidents}
+          selected={current?.call_id ?? null}
+          onSelect={onSelect}
+          events={nasa.events.data}
+          fires={nasa.fires.data}
+          layers={layers}
+          imageryDate={imageryDate}
+          request={mapRequest}
+          follow={follow}
+          panelOpen={!!current}
+          onEvent={showEvent}
+        />
+        <div className="map-context">
+          <span className="section-eyebrow">
+            {selectedEvent ? "ACTIVE NASA EVENT" : "AREA OF OPERATIONS"}
+          </span>
+          <span>{region}</span>
+        </div>
+        <div className={`queue-shell${queueOpen ? "" : " is-collapsed"}`}>
+          <section
+            className="call-queue glass"
+            aria-label="Overflow call queue"
+          >
+            <div className="queue-heading">
+              <div>
+                <span className="section-eyebrow">SURGE OVERFLOW</span>
+                <h1>
+                  Every call, in view<span className="accent-period">.</span>
+                </h1>
+              </div>
+              <button
+                className="icon-button queue-toggle"
+                onClick={() => setQueueOpen(!queueOpen)}
+                aria-label={
+                  queueOpen ? "Collapse call queue" : "Expand call queue"
+                }
+                aria-expanded={queueOpen}
+              >
+                <Icon name={queueOpen ? "minus" : "plus"} />
+              </button>
+            </div>
+            <div className="queue-body">
+              <div className="queue-tabs" aria-label="Call status filter">
+                <button
+                  aria-pressed={filter === "waiting"}
+                  onClick={() => setFilter("waiting")}
+                >
+                  Waiting <span>{waiting.length}</span>
+                </button>
+                <button
+                  aria-pressed={filter === "taken"}
+                  onClick={() => setFilter("taken")}
+                >
+                  Taken / dispatched <span>{taken.length}</span>
+                </button>
+              </div>
+              <div className="queue-search">
+                <Icon name="search" size={15} />
+                <input
+                  aria-label="Search calls"
+                  placeholder="Find a caller, address, or incident"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+                {search && (
+                  <button
+                    className="icon-button"
+                    onClick={() => setSearch("")}
+                    aria-label="Clear search"
+                  >
+                    <Icon name="close" size={13} />
+                  </button>
+                )}
+              </div>
+              <div className="queue-count">
+                <span>
+                  {filter === "waiting" ? "PRIORITY ORDER" : "CLAIMED CALLS"}
+                </span>
+                <span>
+                  {unlocated > 0
+                    ? `${unlocated} awaiting location`
+                    : "All callers located"}
+                </span>
+              </div>
+              <div className="queue-cards">
+                {queue.length ? (
+                  queue.map((inc) => (
+                    <QueueCard
+                      key={inc.call_id}
+                      inc={inc}
+                      now={now}
+                      selected={inc.call_id === selected}
+                      onClick={() => onSelect(inc.call_id)}
+                    />
+                  ))
+                ) : (
+                  <div className="empty-state">
+                    <span className="empty-orbit">
+                      <Icon name={search ? "search" : "phone"} size={28} />
+                    </span>
+                    <h2>
+                      {search
+                        ? "No matching calls"
+                        : !demo && connection !== "live"
+                          ? "Waiting for the call feed"
+                          : filter === "taken"
+                            ? "No calls taken yet"
+                            : "No waiting callers"}
+                    </h2>
+                    <p>
+                      {search
+                        ? "Try an address, incident type, or call ID."
+                        : !demo && connection !== "live"
+                          ? "Calls will appear when the backend connects. You can explore sample calls in demo mode."
+                          : "New overflow calls will appear here and on the map."}
+                    </p>
+                    {!demo && connection !== "live" && (
+                      <a className="text-action" href="?demo=1">
+                        Explore the demo <Icon name="arrow" size={14} />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="queue-footer">
+                <span>
+                  <span
+                    className={`status-dot${urgent ? " urgent-dot" : " muted-dot"}`}
+                  />
+                  {urgent
+                    ? `${urgent} immediate ${urgent === 1 ? "call" : "calls"}`
+                    : "No immediate calls"}
+                </span>
+                <span>
+                  <kbd>J</kbd>
+                  <kbd>K</kbd> navigate
+                </span>
+              </div>
+            </div>
+          </section>
+          {!demo && connection !== "live" && (
+            <div className="feed-banner glass" role="status">
+              <Icon name="signal" size={16} />
+              <span>
+                <strong>
+                  {connection === "connecting"
+                    ? "Connecting to call feed"
+                    : "Call feed disconnected"}
+                </strong>
+                <small>
+                  {lastUpdate
+                    ? `Showing last confirmed state · ${ageLabel(lastUpdate, now)}. Reconnecting…`
+                    : "Reconnecting automatically. No live calls received."}
+                </small>
+              </span>
+            </div>
           )}
-        </aside>
+          {demo && (
+            <div className="demo-banner glass">
+              <span className="demo-label">DEMO</span>
+              <span>
+                Sample callers. NASA layers use real feeds.
+                <br />
+                <small>Call actions are simulated locally.</small>
+              </span>
+            </div>
+          )}
+        </div>
+        {!current && (
+          <NasaControls
+            events={nasa.events}
+            fires={nasa.fires}
+            imagery={nasa.imagery}
+            layers={layers}
+            setLayers={setLayers}
+            date={imageryDate}
+            setDate={setChosenDate}
+            onEvent={showEvent}
+            selectedEvent={selectedEvent}
+            onCloseEvent={() => setSelectedEvent(null)}
+            now={now}
+          />
+        )}
+        <div className="map-tools glass">
+          <button onClick={home}>
+            <Icon name="target" size={16} />
+            Home region
+          </button>
+          <button
+            onClick={() => {
+              setSelected(null);
+              setMapRequest({ key: Date.now(), fit: true });
+              setRegion("Caller locations");
+            }}
+            disabled={!incidents.some((i) => i.location.lat != null)}
+          >
+            <Icon name="pin" size={16} />
+            Fit callers
+          </button>
+          <button
+            className={follow ? "is-following" : ""}
+            aria-pressed={follow}
+            onClick={() => setFollow(!follow)}
+            title="Automatically center the map when a call becomes P1"
+          >
+            <Icon name="wave" size={16} />
+            Follow P1
+          </button>
+        </div>
+        {current && (
+          <IncidentPanel
+            key={current.call_id}
+            inc={current}
+            transcript={transcripts[current.call_id] ?? NO_LINES}
+            now={now}
+            demo={demo}
+            connected={connection === "live"}
+            onDemoAction={updateDemo}
+            onClose={() => setSelected(null)}
+          />
+        )}
+        <div className="map-legend glass" aria-label="Map legend">
+          <span className="legend-title">CALL PRIORITY</span>
+          <span>
+            <i className="legend-dot immediate" />
+            P1 Immediate
+          </span>
+          <span>
+            <i className="legend-dot urgent" />
+            P2 Urgent
+          </span>
+          <span>
+            <i className="legend-dot standard" />
+            P3 Standard
+          </span>
+          <span>
+            <i className="legend-dot low" />
+            P4 Low / unassessed
+          </span>
+          {layers.fires && (
+            <span className="nasa-legend">
+              <i className="legend-diamond" />
+              Fire detection
+            </span>
+          )}
+          {layers.events && (
+            <span className="nasa-legend">
+              <i className="legend-dot event" />
+              NASA event
+            </span>
+          )}
+        </div>
+        {layers.imagery && (
+          <div className="imagery-label glass">
+            <Icon name="layers" size={14} />
+            VIIRS NOAA-20 <span>{imageryDate} UTC</span>
+          </div>
+        )}
       </main>
+      <span className="sr-only" aria-live="polite">
+        {urgent} immediate calls. {waiting.length} waiting callers.
+      </span>
     </div>
   );
 }

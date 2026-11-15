@@ -128,8 +128,8 @@ export const AgentUpdate = z
   .object({
     call_id: z.string().min(1),
     // Bound to ElevenLabs system dynamic variables; may be empty on web/test calls.
-    call_sid: z.string().optional(),
-    caller_id: z.string().optional(),
+    call_sid: z.string().nullish(),
+    caller_id: z.string().nullish(),
     caller: Caller.partial().optional(),
     location: Location.pick({ spoken: true, address: true, unit_or_floor: true, landmark: true, read_back_confirmed: true })
       .partial()

@@ -13,7 +13,7 @@ const escalated = new Set<string>();
 export const callSids = new Map<string, string>();
 
 // Unresolved dynamic variables arrive empty or as "{{...}}" on non-phone calls.
-const real = (v?: string) => (v && !v.includes("{{") && v.trim() ? v.trim() : undefined);
+const real = (v?: string | null) => (v && !v.includes("{{") && v.trim() ? v.trim() : undefined);
 
 export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply> {
   const { call_id, call_sid, caller_id, ...patch } = update;

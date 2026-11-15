@@ -77,3 +77,42 @@ describe("merge", () => {
     expect(i.people.trapped).toBe(true);
   });
 });
+
+describe("salvage", async () => {
+  const { salvage } = await import("../src/routes/tools");
+  it("keeps valid fields when one field is invalid", () => {
+    const r = salvage({ call_id: "c", call_sid: 5, location: { address: "1 Huron St" }, incident: { type: "robbery" } });
+    expect(r.data?.location?.address).toBe("1 Huron St");
+    expect(r.dropped).toEqual(expect.arrayContaining(["call_sid", "incident.type"]));
+  });
+  it("drops unknown keys", () => {
+    const r = salvage({ call_id: "c", foo: 1, people: { involved: 2 } });
+    expect(r.data?.people?.involved).toBe(2);
+    expect(r.dropped).toContain("foo");
+  });
+  it("rejects a missing call_id", () => {
+    expect(salvage({ location: { address: "x" } }).data).toBeNull();
+  });
+});
+
+describe("gemini triage merge", async () => {
+  const { applyLlmTriage, LlmTriage } = await import("../src/ai/gemini");
+  it("AI can raise a robbery in progress above the rules floor, with evidence", () => {
+    const i = make({ incident: { type: "crime", description: "I am being robbed" }, hazards: { weapon: false, violence_ongoing: false } });
+    i.triage.rules = rulesFloor(i);
+    expect(i.triage.rules.priority).toBe(3);
+    applyLlmTriage(i, LlmTriage.parse({ priority: 2, reasons: [{ text: "Robbery in progress", evidence_field: "incident.description" }], units: ["police"], summary: "Caller is being robbed now.", contradictions: [], confidence: 0.8 }));
+    const f = finalPriority(i);
+    expect(f.priority).toBe(2);
+    expect(f.reasons.find((r) => r.source === "ai")?.evidence_field).toBe("incident.description");
+  });
+  it("AI never lowers a rules P1", () => {
+    const i = make({ people: { trapped: true } });
+    i.triage.rules = rulesFloor(i);
+    applyLlmTriage(i, LlmTriage.parse({ priority: 4, reasons: [], units: [], summary: "x", contradictions: [], confidence: 0.9 }));
+    expect(finalPriority(i).priority).toBe(1);
+  });
+  it("rejects output without evidence", () => {
+    expect(LlmTriage.safeParse({ priority: 1, reasons: [{ text: "x", evidence_field: "" }], units: [], summary: "s", contradictions: [], confidence: 1 }).success).toBe(false);
+  });
+});

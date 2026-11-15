@@ -11,12 +11,13 @@ import { webhooks } from "./routes/webhooks.js";
 import { hazards } from "./routes/hazards.js";
 import { attachWebSocket } from "./ws.js";
 import { refreshFires } from "./hazards/firms.js";
+import { geminiEnabled } from "./ai/gemini.js";
 
 const app = new Hono();
 app.use("*", logger());
 app.use("*", cors());
 
-app.get("/health", (c) => c.json({ ok: true }));
+app.get("/health", (c) => c.json({ ok: true, ai_triage: geminiEnabled() }));
 app.route("/tools", tools);
 app.route("/incidents", incidents);
 app.route("/dispatchers", dispatcherRoutes);

@@ -154,9 +154,13 @@ export function agentBody(toolIds: string[], voiceId?: string): AgentCreate {
           builtInTools: {
             // end_call deliberately omitted: the AI never hangs up on a 911 caller.
             languageDetection: { name: "language_detection", params: { systemToolType: "language_detection" } },
+            // Lets the agent stay silent instead of filling every pause.
+            skipTurn: { name: "skip_turn", params: { systemToolType: "skip_turn" } },
           },
         },
       },
+      // Long re-engage timeout, and never hang up on silence (a caller may be hiding or busy helping someone).
+      turn: { turnTimeout: 20, silenceEndCallTimeout: -1 },
       tts: { modelId: "eleven_flash_v2", ...(voiceId ? { voiceId } : {}) },
       languagePresets: Object.fromEntries(
         Object.entries(FIRST_MESSAGE_BY_LANG).map(([lang, firstMessage]) => [lang, { overrides: { agent: { firstMessage } } }]),
