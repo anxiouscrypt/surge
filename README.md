@@ -72,6 +72,15 @@ Take-over: calls from the caller page switch to live browser audio with the disp
 - The caller page shares location, battery and photos only with the dispatcher for that one call (each request carries a per-call ticket). Nearest stations come from a one-time area download, so no caller location goes to a third party for that.
 - The caller page says plainly that this is a hackathon demo and not real 911.
 
+## Security and reliability
+
+- **Dispatcher data stays private.** Calls, transcripts, photos and the live feed are open on the demo laptop (localhost) but need the dashboard key through the public link; `pnpm demo` generates it and prints a private link. Without it, the public dashboard shows a locked page that points to the caller page.
+- **Per-call tickets.** A caller page can only post GPS, photos and messages for its own call.
+- **Origins.** Only Surge's own pages (localhost, the current public link) may call the API or open the live feed. Agent tools use a shared secret; the post-call webhook checks ElevenLabs' signature when `ELEVENLABS_WEBHOOK_SECRET` is set.
+- **Limits.** 8 caller sessions per device per 10 minutes, 20 photos per call, request size limits.
+- **Survives restarts and network blips.** Calls are saved to `apps/api/data/` and restored on start; `pnpm demo` opens a new public link by itself if the old one stops answering.
+- **Falls back, never blocks.** Gemini down: the rules priority stands ("AI triage pending"). Geocoding fails: the caller's GPS or an approximate pin. Live audio blocked: the dispatcher calls back.
+
 ## NASA Earth data
 
 Surge combines NASA EONET event observations, GIBS/Worldview VIIRS NOAA-20 imagery, and FIRMS thermal-anomaly detections for regional context and caller proximity. Dates, dataset sources, coverage, and limits are shown in the map controls. See [NASA data and setup](docs/NASA-DATA.md) for API contracts and the separate FIRMS key requirement.
