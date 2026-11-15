@@ -17,6 +17,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadPlaces } from "./geo/places.js";
 import { restoreSnapshot } from "./store/memory.js";
+import { publicUrl } from "./publicUrl.js";
 import { smsEnabled } from "./telephony/twilio.js";
 import { startReplay } from "./demo/replay.js";
 import { dispatcherAllowed, viaTunnel } from "./auth.js";
@@ -57,7 +58,7 @@ app.post("/demo/replay", (c) => {
 /** What the dashboard needs to show the caller QR code and feature status. */
 app.get("/config", (c) =>
   c.json({
-    public_url: (process.env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "") || null,
+    public_url: publicUrl() || null,
     sms: smsEnabled(),
     phone_number: process.env.TWILIO_PHONE_NUMBER || null,
     voice: !!(process.env.ELEVENLABS_AGENT_ID && process.env.ELEVENLABS_API_KEY),

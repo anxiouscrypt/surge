@@ -6,6 +6,7 @@ import { handleAgentUpdate } from "../pipeline.js";
 import { note, store } from "../store/memory.js";
 import { sendSms, smsEnabled } from "../telephony/twilio.js";
 import { issueTicket } from "../caller/tickets.js";
+import { publicUrl } from "../publicUrl.js";
 
 export const tools = new Hono();
 
@@ -74,7 +75,7 @@ tools.post("/send_location_link", async (c) => {
   if (!inc || !to || !smsEnabled() || inc.call_state.covert) {
     return c.json({ sent: false, say: null, error: !smsEnabled() ? "Texting is not available. Do not mention a text." : "No number to text. Do not mention a text." });
   }
-  const base = (process.env.PUBLIC_BASE_URL ?? "").replace(/\/$/, "");
+  const base = publicUrl();
   const link = `${base}/c/${issueTicket(inc.call_id)}`;
   const r = await sendSms(to, `911 (Surge): tap to share your exact location and photos with the dispatcher: ${link}`);
   note(inc, "system", r.ok ? "Texted the caller a location link" : "Could not text the caller a location link");
