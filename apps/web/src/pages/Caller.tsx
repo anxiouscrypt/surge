@@ -46,6 +46,10 @@ export default function Caller() {
   const lastTyped = useRef<string | null>(null);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+  // Socket handlers outlive renders: read mode and safety through refs, never stale state.
+  const modeRef = useRef<Mode>("voice");
+  const unsafeRef = useRef(false);
+  const handingOff = useRef(false);
   const logEnd = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -124,6 +128,8 @@ export default function Caller() {
   async function start(m: Mode, isUnsafe = false) {
     setMode(m);
     setUnsafe(isUnsafe);
+    modeRef.current = m;
+    unsafeRef.current = isUnsafe;
     setPhase("starting");
     setError(null);
     try {
@@ -150,6 +156,7 @@ export default function Caller() {
         onModeChange: ({ mode }) => setSpeaking(mode === "speaking"),
         onDisconnect: (details) => {
           console.info("voice agent disconnected", details);
+          if (handingOff.current) return; // we ended the AI session to hand the caller to a dispatcher
           if (phaseRef.current === "live" || phaseRef.current === "starting") {
             stopEverything();
             setPhase("ended");
@@ -210,10 +217,11 @@ export default function Caller() {
 
   async function takeover(name?: string) {
     setDispatcher(name || "A dispatcher");
-    const wasText = !!conv.current && mode === "text";
+    handingOff.current = true;
+    const text = modeRef.current === "text" || unsafeRef.current;
     await conv.current?.endSession().catch(() => undefined);
     conv.current = null;
-    if (wasText || unsafe) {
+    if (text) {
       // Keep it silent: the dispatcher continues by text.
       setPhase("dispatcher");
       add({ role: "dispatcher", text: `${name || "A dispatcher"} has joined. Keep typing here.` });
