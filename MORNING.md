@@ -42,11 +42,20 @@ If the live audio takeover fails on the venue wifi (some networks block peer-to-
 - **Dashboard**: P1 chime + flashing card + toast (mute button top right), more header stats, **Call from phone** QR dialog, **Replay a surge**, **Clear all calls**.
 - **Agent model** is now `gemini-3.5-flash` (was 2.5-flash): 2.5 failed the Spanish and covert tests about half the time; 3.5 passed 10/10. If voice replies feel slow on your test call, set it back in `apps/api/agent/config.ts` (`llm:`) and run `pnpm agent:setup`.
 - **Agent**: never hangs up because the caller says bye; closes non-urgent reports with a callback; knows about GPS and photos from the caller page. Five simulated-caller tests pass against the live agent (`pnpm --filter @surge/api agent:test`).
+- **Hardening (later in the night)**:
+  - The dashboard through the public link needs a key: `pnpm demo` prints a private "Dashboard (other device)" link. Without the key you get a locked page that points to the caller page. The laptop (localhost) never needs it.
+  - Rate limits: 8 calls per device per 10 minutes, 20 photos per call; request size limits.
+  - Calls are saved to disk and survive an API restart (`apps/api/data/incidents.json`, not committed).
+  - A crash shows a Reload button instead of a blank page; the caller's screen stays awake during a call.
+  - The post-call webhook checks ElevenLabs' signature when `ELEVENLABS_WEBHOOK_SECRET` is set, and fills facts the agent missed (never overwriting what the caller confirmed).
+- **More features**:
+  - **Steer the AI**: on a caller-page call, type a question in the panel ("Are there pets inside?") and the AI asks it next.
+  - Suggested units (Fire / EMS / Police) from Gemini on cards and in the panel; the wait timer turns amber at 2 min and red at 5.
+  - The caller page speaks Spanish and Arabic (right to left) when the phone does. Add `?lang=es` or `?lang=ar` to the link to show it on any phone.
 - **Reliability**: `pnpm demo` one-command start; demo controls blocked over the public link; intersections ("Main and Washtenaw") look up the crossing in OpenStreetMap, or pin approximately when that server is busy.
 
 ## Known limits (be upfront if asked)
 
-- Calls live in memory: restarting the API clears them.
 - The map tiles take ~10 s to appear on first load. Open the dashboard a minute early.
 - The ElevenLabs "talk-to" link still works for voice, but has no GPS or photos; use the QR caller page.
-- Anyone with the public link could open the dashboard (no login). Only share the QR (`/c`).
+- The dashboard key is in the "Dashboard (other device)" link that `pnpm demo` prints. Don't share that link; share only the QR (`/c`).

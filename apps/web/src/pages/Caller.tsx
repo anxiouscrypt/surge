@@ -7,6 +7,10 @@ import { Conversation } from "@elevenlabs/client";
 import { API_URL, post, request } from "../lib/api";
 import { AudioLink, type Signal } from "../lib/rtc";
 import { Icon } from "../components/Icon";
+import { CALLER_TEXT, phoneLang } from "../lib/callerText";
+
+const LANG = phoneLang();
+const T = CALLER_TEXT[LANG];
 
 type Phase = "home" | "text-safety" | "starting" | "live" | "handoff" | "dispatcher" | "ended" | "error";
 type Mode = "voice" | "text";
@@ -14,8 +18,6 @@ type Line = { role: "agent" | "caller" | "dispatcher"; text: string };
 type Gps = { state: "off" | "asking" | "on" | "denied" | "unavailable"; accuracy?: number; address?: string | null };
 type Battery = { level: number; charging: boolean; addEventListener: (e: string, f: () => void) => void };
 
-const TEXT_FIRST = "Surge 911 text line. I'm automated and a dispatcher can see this chat. Where are you right now?";
-const TEXT_FIRST_UNSAFE = "You can answer with one word. Are you hurt?";
 const LANGS = ["es", "ar"] as const;
 
 export default function Caller() {
@@ -32,7 +34,7 @@ export default function Caller() {
   const [draft, setDraft] = useState("");
   const [started, setStarted] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [dispatcher, setDispatcher] = useState("A dispatcher");
+  const [dispatcher, setDispatcher] = useState(T.aDispatcher);
   const [attached, setAttached] = useState(false); // opened from a texted link: no agent here, the call is on the phone
 
   const conv = useRef<Conversation | null>(null);
@@ -152,14 +154,14 @@ export default function Caller() {
     try {
       const session = await post<{ ticket: string; signed_url: string }>("/caller/session", {});
       ticket.current = session.ticket;
-      const lang = navigator.language.slice(0, 2) as (typeof LANGS)[number];
+      const lang = LANG as (typeof LANGS)[number];
       const c = await Conversation.startSession({
         signedUrl: session.signed_url,
         connectionType: "websocket",
         textOnly: m === "text",
         overrides: {
           agent: {
-            ...(m === "text" ? { firstMessage: isUnsafe ? TEXT_FIRST_UNSAFE : TEXT_FIRST } : {}),
+            ...(m === "text" ? { firstMessage: isUnsafe ? T.textFirstUnsafe : T.textFirst } : {}),
             ...(LANGS.includes(lang) ? { language: lang } : {}),
           },
           ...(m === "text" ? { conversation: { textOnly: true } } : {}),
@@ -202,7 +204,7 @@ export default function Caller() {
       startGps();
     } catch (e) {
       const msg = (e as Error).message;
-      fail(/permission|denied|notallowed/i.test(msg) ? "Microphone access is needed to talk. Allow it in your browser settings, or text instead." : msg || "Could not start the call.");
+      fail(/permission|denied|notallowed/i.test(msg) ? T.micNeeded : msg || "Could not start the call.");
     }
   }
 
@@ -235,7 +237,7 @@ export default function Caller() {
   const signal = (data: Signal) => ws.current?.readyState === WebSocket.OPEN && ws.current.send(JSON.stringify({ type: "rtc", data }));
 
   async function takeover(name?: string) {
-    setDispatcher(name || "A dispatcher");
+    setDispatcher(name || T.aDispatcher);
     handingOff.current = true;
     const text = modeRef.current === "text" || unsafeRef.current;
     await conv.current?.endSession().catch(() => undefined);
@@ -243,12 +245,13 @@ export default function Caller() {
     if (text) {
       // Keep it silent: the dispatcher continues by text.
       setPhase("dispatcher");
-      add({ role: "dispatcher", text: `${name || "A dispatcher"} has joined. Keep typing here.` });
+      add({ role: "dispatcher", text: T.joined(name || T.aDispatcher) });
       return;
     }
     setPhase("handoff");
     try {
-      const u = new SpeechSynthesisUtterance("Connecting you to a dispatcher now. Stay on the line.");
+      const u = new SpeechSynthesisUtterance(T.handoffSpeech);
+      u.lang = LANG;
       speechSynthesis.speak(u);
     } catch {
       /* no speech */
@@ -257,7 +260,8 @@ export default function Caller() {
     link.current = new AudioLink(signal, (state, err) => {
       if (state === "connected") setPhase("dispatcher");
       if (state === "failed") {
-        setNotice(`Live audio could not connect${err ? ` (${err})` : ""}. The dispatcher has your location and will call you.`);
+        setNotice(T.audioFailed);
+        if (err) console.warn("live audio failed", err);
         setPhase("dispatcher");
       }
     });
@@ -297,7 +301,7 @@ export default function Caller() {
 
   async function sendPhoto(file: File) {
     if (!callId.current) return;
-    setNotice("Sending photo…");
+    setNotice(T.sendingPhoto);
     try {
       const body = file.type.startsWith("image/") && file.type !== "image/heic" ? await shrink(file) : file;
       const res = await fetch(`${API_URL}/caller/${callId.current}/media`, {
@@ -306,10 +310,10 @@ export default function Caller() {
         body,
       });
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? "Upload failed");
-      setNotice("Photo sent to the dispatcher.");
+      setNotice(T.photoSent);
       conv.current?.sendContextualUpdate(`[Phone] ${file.type.startsWith("video") ? "video" : "photo"} sent. The dispatcher can see it.`);
     } catch (e) {
-      setNotice(`Photo not sent: ${(e as Error).message}`);
+      setNotice(T.photoFailed((e as Error).message));
     }
     setTimeout(() => setNotice(null), 4000);
   }
@@ -357,7 +361,7 @@ export default function Caller() {
   const texting = mode === "text" || unsafe;
 
   return (
-    <div className={`caller-page ${unsafe ? "quiet" : ""} phase-${phase}`}>
+    <div className={`caller-page ${unsafe ? "quiet" : ""} phase-${phase}`} lang={LANG} dir={LANG === "ar" ? "rtl" : "ltr"}>
       <header className="caller-top">
         <span className="caller-brand">
           <span className="brand-mark">
@@ -367,44 +371,44 @@ export default function Caller() {
         </span>
         {(phase === "live" || phase === "dispatcher" || phase === "handoff") && (
           <span className="caller-live">
-            <span className="live-dot" /> {phase === "dispatcher" ? "DISPATCHER" : "LIVE"} · {clock}
+            <span className="live-dot" /> {phase === "dispatcher" ? T.dispatcherTag : T.live} · {clock}
           </span>
         )}
       </header>
 
       {phase === "home" && (
         <main className="caller-home">
-          <h1>Need help now?</h1>
-          <p className="caller-sub">Every dispatcher is busy. Surge answers right away, collects what they need, and a dispatcher can see your call live.</p>
+          <h1>{T.needHelp}</h1>
+          <p className="caller-sub">{T.intro}</p>
           <button className="talk-button" onClick={() => void start("voice")}>
             <span className="talk-ring" />
             <Icon name="mic" size={34} />
-            <span>Talk to Surge</span>
+            <span>{T.talk}</span>
           </button>
           <button className="text-button" onClick={() => setPhase("text-safety")}>
-            <Icon name="message" size={18} /> Can't talk? Text instead
+            <Icon name="message" size={18} /> {T.textInstead}
           </button>
           <p className="caller-fine">
-            Your location, battery level and any photos go only to the dispatcher handling this call.
+            {T.privacy}
             <br />
-            <b>Hackathon demo.</b> In a real emergency, call 911.
+            <b>{T.demo}</b> {T.real911}
           </p>
         </main>
       )}
 
       {phase === "text-safety" && (
         <main className="caller-home">
-          <h1>Is it safe to talk out loud?</h1>
+          <h1>{T.safeQ}</h1>
           <button className="choice danger" onClick={() => void start("text", true)}>
-            <b>No, someone could hear me</b>
-            <span>Silent mode: dark screen, no sounds, yes/no questions</span>
+            <b>{T.unsafe}</b>
+            <span>{T.unsafeSub}</span>
           </button>
           <button className="choice" onClick={() => void start("text", false)}>
-            <b>I can't speak or hear well</b>
-            <span>Text with Surge instead of talking</span>
+            <b>{T.cantSpeak}</b>
+            <span>{T.cantSpeakSub}</span>
           </button>
           <button className="link-button" onClick={() => setPhase("home")}>
-            Back
+            {T.back}
           </button>
         </main>
       )}
@@ -412,7 +416,7 @@ export default function Caller() {
       {phase === "starting" && (
         <main className="caller-center">
           <div className="spinner" />
-          <p>{mode === "voice" && !linkTicket ? "Connecting… allow the microphone when asked." : "Connecting…"}</p>
+          <p>{mode === "voice" && !linkTicket ? T.connectingMic : T.connecting}</p>
         </main>
       )}
 
@@ -421,32 +425,32 @@ export default function Caller() {
           {phase === "handoff" ? (
             <div className="agent-status">
               <div className="spinner" />
-              <b>Connecting you to {dispatcher}…</b>
-              <span>Stay on the line.</span>
+              <b>{T.connectingTo(dispatcher)}</b>
+              <span>{T.stay}</span>
             </div>
           ) : phase === "dispatcher" && !texting ? (
             <div className="agent-status">
               <div className="orb dispatcher">
                 <Icon name="headset" size={30} />
               </div>
-              <b>You're talking to {dispatcher}</b>
-              <span>{notice ?? "Speak normally."}</span>
+              <b>{T.talkingTo(dispatcher)}</b>
+              <span>{notice ?? T.speakNormally}</span>
             </div>
           ) : attached ? (
             <div className="agent-status">
               <div className="orb">
                 <Icon name="pin" size={30} />
               </div>
-              <b>Stay on your phone call</b>
-              <span>This page shares your location and photos with the dispatcher.</span>
+              <b>{T.stayOnPhone}</b>
+              <span>{T.pageShares}</span>
             </div>
           ) : !texting ? (
             <div className="agent-status">
               <div className={`orb ${speaking ? "speaking" : "listening"}`}>
                 <Icon name={speaking ? "volume" : "mic"} size={30} />
               </div>
-              <b>{speaking ? "Surge is speaking" : "Surge is listening"}</b>
-              <span>Automated assistant · a dispatcher can see this call</span>
+              <b>{speaking ? T.speaking : T.listening}</b>
+              <span>{T.automated}</span>
             </div>
           ) : null}
 
@@ -456,32 +460,32 @@ export default function Caller() {
               <div>
                 <b>
                   {gps.state === "on"
-                    ? "Sharing live location"
+                    ? T.gpsOn
                     : gps.state === "asking"
-                      ? "Finding your location…"
+                      ? T.gpsAsking
                       : gps.state === "denied"
-                        ? "Location is blocked"
+                        ? T.gpsDenied
                         : gps.state === "unavailable"
-                          ? "Location unavailable"
-                          : "Location not shared"}
+                          ? T.gpsUnavailable
+                          : T.gpsOff}
                 </b>
                 <span>
                   {gps.state === "on"
-                    ? `${gps.address ? `Near ${gps.address} · ` : ""}±${gps.accuracy} m`
+                    ? `${gps.address ? `${T.near(gps.address)} · ` : ""}±${gps.accuracy} m`
                     : gps.state === "denied"
-                      ? "Allow location for this site in your settings, or say the address."
-                      : "The dispatcher sees your exact spot on the map."}
+                      ? T.gpsDeniedSub
+                      : T.gpsSub}
                 </span>
               </div>
               {(gps.state === "off" || gps.state === "denied" || gps.state === "unavailable") && (
-                <button onClick={startGps}>Share</button>
+                <button onClick={startGps}>{T.share}</button>
               )}
             </div>
             <label className="caller-card photo">
               <Icon name="camera" size={18} />
               <div>
-                <b>Send a photo</b>
-                <span>{notice && phase !== "dispatcher" ? notice : "Show the dispatcher what you see, only if it's safe."}</span>
+                <b>{T.photo}</b>
+                <span>{notice && phase !== "dispatcher" ? notice : T.photoSub}</span>
               </div>
               <input
                 type="file"
@@ -500,7 +504,7 @@ export default function Caller() {
             <div className={`caller-log ${texting ? "chat" : ""}`}>
               {lines.map((l, i) => (
                 <p key={i} className={`bubble ${l.role}`}>
-                  {l.role === "dispatcher" && <small>Dispatcher</small>}
+                  {l.role === "dispatcher" && <small>{T.dispatcherLabel}</small>}
                   {l.text}
                 </p>
               ))}
@@ -511,7 +515,7 @@ export default function Caller() {
           {texting && phase !== "handoff" && (
             <div className="chat-input">
               <div className="quick">
-                {["Yes", "No", "I don't know"].map((q) => (
+                {T.quick.map((q) => (
                   <button key={q} onClick={() => sendText(q)}>
                     {q}
                   </button>
@@ -523,7 +527,7 @@ export default function Caller() {
                   sendText(draft);
                 }}
               >
-                <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Type here" aria-label="Message" autoComplete="off" />
+                <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={T.typeHere} aria-label="Message" autoComplete="off" />
                 <button type="submit" aria-label="Send" disabled={!draft.trim()}>
                   <Icon name="send" size={18} />
                 </button>
@@ -538,7 +542,7 @@ export default function Caller() {
               </button>
             )}
             <button className="hangup" onClick={hangUp}>
-              {attached ? "Stop sharing" : "End call"}
+              {attached ? T.stopSharing : T.endCall}
             </button>
           </div>
         </main>
@@ -549,11 +553,11 @@ export default function Caller() {
           <div className="ended-mark">
             <Icon name="check" size={30} />
           </div>
-          <h1>Call ended</h1>
-          <p className="caller-sub">If anything changes or gets worse, call again.</p>
+          <h1>{T.callEnded}</h1>
+          <p className="caller-sub">{T.callAgain}</p>
           {!linkTicket && (
             <button className="text-button" onClick={() => location.reload()}>
-              Start a new call
+              {T.newCall}
             </button>
           )}
         </main>
@@ -561,14 +565,14 @@ export default function Caller() {
 
       {phase === "error" && (
         <main className="caller-center">
-          <h1>Couldn't connect</h1>
+          <h1>{T.couldntConnect}</h1>
           <p className="caller-sub">{error}</p>
           {!linkTicket && (
             <>
               <button className="text-button" onClick={() => setPhase("home")}>
-                Try again
+                {T.tryAgain}
               </button>
-              <p className="caller-fine">In a real emergency, call 911.</p>
+              <p className="caller-fine">{T.real911}</p>
             </>
           )}
         </main>
