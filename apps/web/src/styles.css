@@ -2198,3 +2198,75 @@ kbd {
     transition: none !important;
   }
 }
+
+/* Covert call: caller cannot speak freely */
+.call-card.covert {
+  box-shadow: inset 3px 0 0 var(--p1);
+}
+.covert-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--p1);
+  background: #ff6b6b14;
+  border: 1px solid #ff6b6b40;
+  border-radius: 4px;
+  align-self: flex-start;
+}
+.covert-banner {
+  display: flex;
+  gap: 10px;
+  margin: 0 20px 12px;
+  padding: 12px 13px;
+  color: #ffb3b3;
+  background: #ff6b6b12;
+  border: 1px solid #ff6b6b55;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.covert-banner svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--p1);
+}
+.covert-banner strong {
+  display: block;
+  color: var(--p1);
+  font-weight: 600;
+}
+.covert-banner p {
+  margin: 5px 0 0;
+  line-height: 1.5;
+  color: #e3a9a9;
+}
+.no-callback {
+  color: var(--p1);
+  font-weight: 600;
+}
+
+/* Provenance stays next to the observation it describes. */
+.fire-coverage { display:flex;flex-direction:column;gap:5px;padding:11px 0;border-bottom:1px solid var(--line);font-size:9px;color:#9bb6c5;line-height:1.6; }
+.fire-coverage small { color:#7793a5;font-size:8px; }
+.fire-coverage strong { color:#e0b482;font-size:9px;font-weight:500; }
+.data-provenance { padding:12px 0;border-top:1px solid var(--line);font-size:10px;color:#a3bac9; }
+.data-provenance summary { cursor:pointer;color:#b7d7ca;font-size:10px; }
+.data-provenance dl { margin:14px 0; }
+.data-provenance dl>div { margin-top:12px; }
+.data-provenance dt { font-size:9px;color:#bfced9;font-weight:600; }
+.data-provenance dd { margin:5px 0 0;font-size:9px;line-height:1.8;color:#859fb1; }
+.data-provenance p { font-size:9px;line-height:1.8;color:#8098a9; }
+.data-provenance a { display:block;font-size:9px;color:#accbbf;line-height:1.6;margin:10px 0; }
+.data-provenance .track-credit { border-top:1px solid var(--line);padding-top:12px;margin-bottom:0;color:#6f8799;font-size:8px; }
+.nasa-snapshot { margin:13px 0; }
+.nasa-snapshot img { display:block;width:100%;height:auto;border-radius:7px;border:1px solid var(--line);background:#0b151e; }
+.nasa-snapshot small { display:block;font-size:8px!important;color:#7c97a8!important;margin-top:7px;line-height:1.7; }
+.nasa-snapshot a { font-size:9px!important;margin-top:9px!important; }
+.event-selection { flex-shrink:0;max-height:380px;overflow-y:auto; }
+@media(max-width:760px){ .event-selection { max-height:270px; } }
+.refresh-nasa { width:100%;text-align:left;background:none;color:#abcabd;font-size:9px;padding:10px 0;border-top:1px solid var(--line); }
+.refresh-nasa:hover { color:#deefe7; }

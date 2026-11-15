@@ -10,6 +10,7 @@ export function rulesFloor(i: Incident): RulesResult {
   const p2: Reason[] = [];
 
   // P1: immediate life threat
+  if (i.call_state.covert) p1.push(rule("Caller cannot speak freely (covert call)", "call_state.covert"));
   if (i.patient.breathing === false) p1.push(rule("Person not breathing", "patient.breathing"));
   if (i.patient.conscious === false) p1.push(rule("Person unconscious", "patient.conscious"));
   if (i.people.trapped === true) p1.push(rule("Someone trapped", "people.trapped"));

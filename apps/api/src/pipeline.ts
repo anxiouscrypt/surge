@@ -35,8 +35,10 @@ export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply>
   store.save(inc, changed);
   if (changed.some((c) => CRITICAL.some((p) => c.startsWith(p)))) scheduleLlmTriage(inc);
 
-  const escalate = inc.triage.rules?.escalate === true && !escalated.has(call_id);
+  let escalate = inc.triage.rules?.escalate === true && !escalated.has(call_id);
   if (escalate) escalated.add(call_id);
+  // Never make the agent announce "highest priority" out loud when someone may be listening.
+  if (inc.call_state.covert) escalate = false;
   return { ok: true, missing: inc.call_state.missing, say: null, escalate };
 }
 

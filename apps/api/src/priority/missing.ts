@@ -3,9 +3,11 @@ import type { Incident } from "@surge/shared";
 
 export function computeMissing(i: Incident): string[] {
   const m: string[] = [];
+  // Covert call: no callback (a ringing phone can endanger the caller) and do not ask if they are safe; they are not.
+  const covert = i.call_state.covert;
   if (!i.location.address && !i.location.landmark) m.push("location");
   else if (!i.location.read_back_confirmed) m.push("location.read_back_confirmed");
-  if (!i.caller.phone || !i.caller.callback_confirmed) m.push("caller.callback");
+  if (!covert && (!i.caller.phone || !i.caller.callback_confirmed)) m.push("caller.callback");
   if (!i.incident.type) m.push("incident.type");
 
   const hurt = i.incident.type === "medical" || (i.people.injured ?? 0) > 0;
@@ -25,7 +27,7 @@ export function computeMissing(i: Incident): string[] {
       break;
   }
   if (i.people.involved === null) m.push("people.involved");
-  if (i.caller.caller_safe === null) m.push("caller.caller_safe");
+  if (!covert && i.caller.caller_safe === null) m.push("caller.caller_safe");
   return m;
 }
 

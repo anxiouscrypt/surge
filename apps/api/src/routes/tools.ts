@@ -51,7 +51,9 @@ tools.post("/get_status", async (c) => {
   const { call_id } = (await c.req.json().catch(() => ({}))) as { call_id?: string };
   const inc = call_id ? store.get(call_id) : undefined;
   // One honest sentence. Never an ETA.
-  const text = !inc
+  const text = inc?.call_state.covert
+    ? "Okay. Stay on the line with me."
+    : !inc
     ? "A dispatcher has been alerted and will take your call as soon as one is free."
     : inc.final_priority === 1
       ? "A dispatcher can see your location and your call is marked highest priority."

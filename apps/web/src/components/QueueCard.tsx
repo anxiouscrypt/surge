@@ -20,7 +20,7 @@ export function QueueCard({
     inc.status === "ai_on_call" && inc.call_state.stage !== "ended";
   return (
     <button
-      className={`call-card priority-${inc.final_priority}${selected ? " selected" : ""}`}
+      className={`call-card priority-${inc.final_priority}${inc.call_state.covert ? " covert" : ""}${selected ? " selected" : ""}`}
       onClick={onClick}
       aria-pressed={selected}
     >
@@ -65,6 +65,12 @@ export function QueueCard({
         </span>
         <Icon name="chevron" size={14} />
       </span>
+      {inc.call_state.covert && (
+        <span className="covert-chip">
+          <Icon name="shield" size={12} />
+          Caller can't talk · do not call back
+        </span>
+      )}
       <span className="card-description">
         {inc.triage.llm?.summary ??
           inc.incident.description ??

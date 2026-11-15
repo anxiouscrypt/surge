@@ -116,3 +116,33 @@ describe("gemini triage merge", async () => {
     expect(LlmTriage.safeParse({ priority: 1, reasons: [{ text: "x", evidence_field: "" }], units: [], summary: "s", contradictions: [], confidence: 1 }).success).toBe(false);
   });
 });
+
+describe("covert calls", async () => {
+  const { handleAgentUpdate } = await import("../src/pipeline");
+  const { tools } = await import("../src/routes/tools");
+
+  it("covert flag alone is P1, even with nothing else known", () => {
+    const r = rulesFloor(make({ call_state: { covert: true, covert_cue: "whispering" } }));
+    expect(r.priority).toBe(1);
+    expect(r.reasons[0].evidence_field).toBe("call_state.covert");
+  });
+
+  it("never asks for a callback number or whether the caller is safe", () => {
+    const m = computeMissing(make({ call_state: { covert: true } }));
+    expect(m).not.toContain("caller.callback");
+    expect(m).not.toContain("caller.caller_safe");
+    expect(m[0]).toBe("location");
+  });
+
+  it("agent is never told to announce escalation out loud", async () => {
+    const reply = await handleAgentUpdate({ call_id: "covert_1", call_state: { covert: true, covert_cue: "pizza order" } });
+    expect(reply.escalate).toBe(false);
+  });
+
+  it("get_status stays neutral on a covert call", async () => {
+    await handleAgentUpdate({ call_id: "covert_2", call_state: { covert: true } });
+    const res = await tools.request("/get_status", { method: "POST", body: JSON.stringify({ call_id: "covert_2" }), headers: { "content-type": "application/json" } });
+    const { text } = (await res.json()) as { text: string };
+    expect(text).not.toMatch(/dispatcher|911|priority|help/i);
+  });
+});

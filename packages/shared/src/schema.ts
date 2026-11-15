@@ -67,6 +67,9 @@ export const CallState = z.object({
   missing: z.array(z.string()),
   caller_requested_human: z.boolean(),
   needs_instructions: z.boolean(),
+  // Caller cannot speak freely (hostage, kidnapping, abuser in the room, coded call). Forces P1, no callback.
+  covert: z.boolean(),
+  covert_cue: n(z.string()),
 });
 
 export const NasaContext = z.object({
@@ -138,7 +141,7 @@ export const AgentUpdate = z
     people: People.partial().optional(),
     patient: Patient.partial().optional(),
     hazards: Hazards.partial().optional(),
-    call_state: CallState.pick({ caller_requested_human: true, needs_instructions: true }).partial().optional(),
+    call_state: CallState.pick({ caller_requested_human: true, needs_instructions: true, covert: true, covert_cue: true }).partial().optional(),
   })
   .strict();
 export type AgentUpdate = z.infer<typeof AgentUpdate>;
@@ -170,7 +173,10 @@ export function emptyIncident(call_id: string, now = new Date()): Incident {
       fire_or_smoke: null, weapon: null, violence_ongoing: null,
       gas_leak: null, downed_power_lines: null, flood_water: null,
     },
-    call_state: { stage: "collecting", missing: [], caller_requested_human: false, needs_instructions: false },
+    call_state: {
+      stage: "collecting", missing: [], caller_requested_human: false, needs_instructions: false,
+      covert: false, covert_cue: null,
+    },
     nasa_context: null,
     triage: { rules: null, llm: null, classifier: null },
     final_priority: 4,

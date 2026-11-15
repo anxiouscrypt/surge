@@ -69,6 +69,7 @@ Rules:
 - If facts conflict (for example the description mentions a weapon but hazards.weapon is false), list it in contradictions and use the more urgent reading.
 - If an important fact is unknown and the situation could be severe, prefer the more urgent priority.
 - The rules engine already gave a floor priority. You may agree or be more urgent; the system never lets you lower it.
+- Covert calls: if call_state.covert is true, priority 1 and include police. Also watch for a covert call the voice agent missed: the description reads like a call to someone else (ordering food, talking to a friend), the caller can only answer yes/no, says everything is fine while facts suggest danger, or another person seems to control the call. Then use priority 1 and add a contradiction starting with "Possible covert call:" saying why. Never suggest calling the caller back on a covert call.
 - units: which services to send (fire, ems, police).
 - summary: one plain sentence for the dispatcher. No advice to the caller.
 - confidence: how sure you are about the priority, 0 to 1.`;
@@ -77,7 +78,7 @@ function promptFor(inc: Incident): string {
   const { caller, location, incident, people, patient, hazards, nasa_context, triage } = inc;
   return JSON.stringify(
     {
-      incident: { caller: { language: caller.language, relation: caller.relation, caller_safe: caller.caller_safe }, location: { address: location.address, landmark: location.landmark, unit_or_floor: location.unit_or_floor }, incident, people, patient, hazards, call_state: { needs_instructions: inc.call_state.needs_instructions } },
+      incident: { caller: { language: caller.language, relation: caller.relation, caller_safe: caller.caller_safe }, location: { address: location.address, landmark: location.landmark, unit_or_floor: location.unit_or_floor }, incident, people, patient, hazards, call_state: { needs_instructions: inc.call_state.needs_instructions, covert: inc.call_state.covert, covert_cue: inc.call_state.covert_cue } },
       nasa_context,
       rules_floor: triage.rules ? { priority: triage.rules.priority, reasons: triage.rules.reasons.map((r) => r.text) } : null,
     },

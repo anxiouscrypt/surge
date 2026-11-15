@@ -88,6 +88,8 @@ export function updateIncidentTool(baseUrl: string, secret: string): ElevenLabs.
             call_state: obj("Call flags", {
               caller_requested_human: bool("Caller asked for a person"),
               needs_instructions: bool("Caller asked what to do (you must not give instructions)"),
+              covert: bool("Caller cannot speak freely: whispering, says they can't talk, someone is with them, answers only yes/no, speaks in code (e.g. ordering food), or an open line with no answers"),
+              covert_cue: str("Short note on what made you think so, e.g. 'whispering', 'ordering a pizza', 'man shouting in background, no answers'"),
             }),
           },
         },

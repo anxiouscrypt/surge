@@ -10,6 +10,8 @@ const cases: Case[] = [
   { name: "not breathing", expect: 1, patch: { incident: { type: "medical", description: "My dad collapsed and isn't breathing" }, patient: { breathing: false } } },
   { name: "calm caller, severe: chest pain and sweating", expect: 1, patch: { incident: { type: "medical", description: "My husband has crushing chest pain and is sweating a lot, he's 64" }, patient: { conscious: true } } },
   { name: "robbery in progress", expect: 2, patch: { incident: { type: "crime", description: "I am being robbed right now" }, hazards: { weapon: false, violence_ongoing: false } } },
+  { name: "covert call the agent missed: pizza order to 911", expect: 1, patch: { incident: { type: "other", description: "Caller asked to order a large pepperoni pizza to 41 Elm St and only answers yes or no" }, location: { address: "41 Elm St, Ypsilanti" } } },
+  { name: "covert call flagged by agent", expect: 1, patch: { call_state: { covert: true, covert_cue: "whispering, man shouting in background" } } },
   { name: "house fire, child inside", expect: 1, patch: { incident: { type: "fire", description: "Smoke from the second floor, my neighbor's kid is still inside" }, hazards: { fire_or_smoke: true }, people: { vulnerable: ["child"] } } },
   { name: "contradiction: says no weapon, describes a gun", expect: 1, patch: { incident: { type: "crime", description: "A man is waving a gun in the parking lot" }, hazards: { weapon: false } } },
   { name: "fender bender, no injuries", expect: 3, patch: { incident: { type: "traffic", description: "Two cars bumped at the light, everyone is fine" }, people: { injured: 0, trapped: false } } },

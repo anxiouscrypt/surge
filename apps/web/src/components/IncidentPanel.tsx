@@ -222,6 +222,19 @@ export function IncidentPanel({
           </span>
         )}
       </div>
+      {inc.call_state.covert && (
+        <section className="covert-banner" role="alert">
+          <Icon name="shield" size={18} />
+          <div>
+            <strong>Covert call · caller cannot speak freely</strong>
+            {inc.call_state.covert_cue && <p>Signal: {inc.call_state.covert_cue}</p>}
+            <p>
+              Do not call back. If you take over, speak quietly and ask yes/no
+              questions. Someone may be listening.
+            </p>
+          </div>
+        </section>
+      )}
       <div
         className="inspector-tabs"
         role="tablist"
@@ -429,7 +442,9 @@ export function IncidentPanel({
         )}
         {inc.call_state.stage === "ended" && (
           <div className="action-message">
-            Call ended. Use the callback number to reach the caller.
+            {inc.call_state.covert
+              ? "Call ended. Do not call back: send units to the last known location."
+              : "Call ended. Use the callback number to reach the caller."}
           </div>
         )}
         {!demo &&
@@ -493,7 +508,11 @@ export function IncidentPanel({
         <div className="callback-row">
           <Icon name="phone" size={13} />
           <span>Callback</span>
-          {callback ? (
+          {inc.call_state.covert ? (
+            <span className="no-callback">
+              Do not call back{inc.caller.phone ? ` · ${inc.caller.phone}` : ""}
+            </span>
+          ) : callback ? (
             demo ? (
               <span>{inc.caller.phone} · demo</span>
             ) : (
