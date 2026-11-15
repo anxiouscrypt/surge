@@ -51,6 +51,11 @@ If the live audio takeover fails on the venue wifi (some networks block peer-to-
 - **More features**:
   - **Steer the AI**: on a caller-page call, type a question in the panel ("Are there pets inside?") and the AI asks it next.
   - Suggested units (Fire / EMS / Police) from Gemini on cards and in the panel; the wait timer turns amber at 2 min and red at 5.
+  - **Next call** button at the top of the queue (or press N) opens the most urgent waiting call.
+  - **Copy for CAD** in the call panel copies a structured summary; **Download all calls (CSV)** in the Call from phone dialog.
+  - Callers can press **It's getting worse**: the call moves up, triage reruns, the AI asks what changed.
+  - Phone and talk-to-link calls now show a live transcript too, and flip to "ended" when the caller hangs up, with any missed facts filled in from ElevenLabs' post-call analysis.
+  - If the public link dies (wifi blip), `pnpm demo` opens a new one by itself and re-points the agent; reopen **Call from phone** for the new QR code.
   - The caller page speaks Spanish and Arabic (right to left) when the phone does. Add `?lang=es` or `?lang=ar` to the link to show it on any phone.
 - **Reliability**: `pnpm demo` one-command start; demo controls blocked over the public link; intersections ("Main and Washtenaw") look up the crossing in OpenStreetMap, or pin approximately when that server is busy.
 

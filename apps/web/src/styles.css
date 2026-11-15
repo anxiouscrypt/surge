@@ -3302,3 +3302,33 @@ kbd {
   color: #f7c48f;
   font-weight: 650;
 }
+.next-call {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 10px 0 2px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  text-align: left;
+  background: rgba(182, 227, 210, 0.08);
+  border: 1px solid rgba(182, 227, 210, 0.3);
+  font-size: 12px;
+}
+.next-call span {
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.next-call b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+  color: #d9e1e7;
+}
+.next-call:hover {
+  background: rgba(182, 227, 210, 0.14);
+}

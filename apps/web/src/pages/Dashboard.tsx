@@ -182,6 +182,15 @@ function DashboardView() {
         e.target === document.body
       )
         onSelect(queue[0].call_id);
+      if (key === "n") {
+        // Next call: the most urgent waiting caller, whatever the current filter.
+        const next = sortQueue(waiting, Date.now())[0];
+        if (next) {
+          e.preventDefault();
+          setFilter("waiting");
+          onSelect(next.call_id);
+        }
+      }
       if (e.key === "Escape") {
         setSelected(null);
         setSelectedEvent(null);
@@ -189,7 +198,7 @@ function DashboardView() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [queue, selected, onSelect]);
+  }, [queue, selected, onSelect, waiting]);
   const home = () => {
     setSelected(null);
     setSelectedEvent(null);
@@ -328,6 +337,23 @@ function DashboardView() {
                   </button>
                 )}
               </div>
+              {waiting.length > 0 && (
+                <button
+                  className="next-call"
+                  onClick={() => {
+                    const next = sortQueue(waiting, now)[0];
+                    setFilter("waiting");
+                    onSelect(next.call_id);
+                  }}
+                  title="Open the most urgent waiting call (N)"
+                >
+                  <span>Next call</span>
+                  <b>
+                    P{sortQueue(waiting, now)[0].final_priority} · {sortQueue(waiting, now)[0].final_reasons[0]?.text ?? "Collecting details"}
+                  </b>
+                  <kbd>N</kbd>
+                </button>
+              )}
               <div className="queue-count">
                 <span>
                   {filter === "waiting" ? "PRIORITY ORDER" : "CLAIMED CALLS"}
