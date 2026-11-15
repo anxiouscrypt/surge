@@ -21,7 +21,8 @@ tools.post("/update_incident", async (c) => {
     return c.json({ ok: false, missing: [], say: null, escalate: false, error: "Update not saved. Send the facts again." });
   }
   const reply = await handleAgentUpdate(data);
-  return c.json(dropped.length ? { ...reply, not_saved: dropped } : reply);
+  const notSaved = [...dropped, ...(reply.not_saved ?? [])];
+  return c.json(notSaved.length ? { ...reply, not_saved: notSaved } : reply);
 });
 
 /** Parse an agent update, dropping only the invalid fields so one bad value never loses the whole update. */

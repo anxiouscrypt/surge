@@ -46,6 +46,7 @@ export function rulesFloor(i: Incident): RulesResult {
 /** Score within a priority (higher = sooner). Waiting time (+1/min) is added live by the dashboard. */
 export function baseScore(i: Incident): number {
   let s = 0;
+  if (i.call_state.covert) s += 25; // top of its priority: the caller may lose the phone any second
   s += 10 * i.people.vulnerable.length;
   s += 2 * Math.min(i.people.involved ?? 0, 5);
   if (i.nasa_context?.nearest_fire_km != null && i.nasa_context.nearest_fire_km <= 5) s += 5;

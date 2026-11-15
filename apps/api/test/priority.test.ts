@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyIncident, type Incident } from "@surge/shared";
-import { rulesFloor, finalPriority } from "../src/priority/rules";
+import { rulesFloor, finalPriority, baseScore } from "../src/priority/rules";
 import { computeMissing } from "../src/priority/missing";
 import { mergeInto } from "../src/store/memory";
 
@@ -144,5 +144,35 @@ describe("covert calls", async () => {
     const res = await tools.request("/get_status", { method: "POST", body: JSON.stringify({ call_id: "covert_2" }), headers: { "content-type": "application/json" } });
     const { text } = (await res.json()) as { text: string };
     expect(text).not.toMatch(/dispatcher|911|priority|help/i);
+  });
+});
+
+describe("address guard", async () => {
+  const { handleAgentUpdate, isPlaceholderAddress } = await import("../src/pipeline");
+
+  it.each([
+    ["the address you would give for a delivery", true],
+    ["at home", true],
+    ["my house", true],
+    ["unknown", true],
+    ["41 Elm St, Ypsilanti", false],
+    ["Washtenaw Ave and Hewitt Rd", false],
+    ["Home Depot on Carpenter Rd", false],
+    ["Eastern Michigan University", false],
+  ])("%s -> placeholder %s", (s, want) => expect(isPlaceholderAddress(s)).toBe(want));
+
+  it("placeholder address is not stored, keeps location missing, and tells the agent", async () => {
+    const reply = await handleAgentUpdate({
+      call_id: "addr_1",
+      location: { spoken: "at home", address: "the address you would give for a delivery", read_back_confirmed: true },
+    });
+    expect(reply.not_saved).toContain("location.address");
+    expect(reply.missing[0]).toBe("location");
+  });
+
+  it("covert calls sort above other calls of the same priority", () => {
+    const covert = make({ call_state: { covert: true } });
+    const other = make({ hazards: { weapon: true }, people: { vulnerable: ["child"], involved: 3 } });
+    expect(baseScore(covert)).toBeGreaterThan(baseScore(other));
   });
 });

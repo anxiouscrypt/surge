@@ -15,8 +15,23 @@ export const callSids = new Map<string, string>();
 // Unresolved dynamic variables arrive empty or as "{{...}}" on non-phone calls.
 const real = (v?: string | null) => (v && !v.includes("{{") && v.trim() ? v.trim() : undefined);
 
+// A phrase like "at home" or "the address you would give for a delivery" is not an address.
+// Real addresses or intersections have a number or no placeholder words ("Main and Washtenaw").
+const PLACEHOLDER =
+  /\b(you|your|would|delivery|the order|unknown|not sure|don'?t know|at home|my home|my house|the house|here|the address|this address|my address|my location|the location|same place)\b/i;
+export const isPlaceholderAddress = (s: string) => !/[a-z]/i.test(s) || (PLACEHOLDER.test(s) && !/\d/.test(s));
+
 export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply> {
   const { call_id, call_sid, caller_id, ...patch } = update;
+  const notSaved: string[] = [];
+  const addr = patch.location?.address;
+  if (addr && isPlaceholderAddress(addr)) {
+    // Keep what was said, but do not count it as a location, so the agent keeps asking.
+    patch.location = { ...patch.location, spoken: patch.location!.spoken ?? addr };
+    delete patch.location.address;
+    delete patch.location.read_back_confirmed;
+    notSaved.push("location.address");
+  }
   const inc = store.getOrCreate(call_id);
   if (real(call_sid)) callSids.set(call_id, real(call_sid)!);
   const changed = mergeInto(inc, patch);
@@ -39,6 +54,11 @@ export async function handleAgentUpdate(update: AgentUpdate): Promise<ToolReply>
   if (escalate) escalated.add(call_id);
   // Never make the agent announce "highest priority" out loud when someone may be listening.
   if (inc.call_state.covert) escalate = false;
+  if (notSaved.length)
+    return {
+      ok: true, missing: inc.call_state.missing, say: null, escalate, not_saved: notSaved,
+      error: "location.address must be the street address, intersection or place name the caller actually said. You still need it: ask for it.",
+    };
   return { ok: true, missing: inc.call_state.missing, say: null, escalate };
 }
 

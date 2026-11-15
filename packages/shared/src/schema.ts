@@ -151,6 +151,9 @@ export const ToolReply = z.object({
   missing: z.array(z.string()),
   say: n(z.string()),
   escalate: z.boolean(),
+  /** Fields that were not stored, and why. The agent must fix and resend them. */
+  not_saved: z.array(z.string()).optional(),
+  error: z.string().optional(),
 });
 export type ToolReply = z.infer<typeof ToolReply>;
 
